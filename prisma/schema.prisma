@@ -1,0 +1,564 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============ AUTH & USERS ============
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  phone         String?
+  role          String   @default("owner") // owner, admin, employee, subcontractor
+  avatar        String?
+  companyId     String?
+  company       Company? @relation(fields: [companyId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignedJobs  Job[]          @relation("AssignedEmployee")
+  createdJobs   Job[]          @relation("CreatedBy")
+  invoices      Invoice[]
+  estimates     Estimate[]
+  callLogs      CallLog[]
+  messages      Message[]
+  notifications Notification[]
+  timeEntries   TimeEntry[]
+}
+
+model Company {
+  id           String   @id @default(cuid())
+  name         String
+  email        String?
+  phone        String?
+  address      String?
+  city         String?
+  state        String?
+  zip          String?
+  logo         String?
+  website      String?
+  industry     String?
+  timezone     String   @default("America/New_York")
+  stripeId     String?
+  plan         String   @default("basic") // basic, standard, pro
+  trialEndsAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  users        User[]
+  clients      Client[]
+  jobs         Job[]
+  invoices     Invoice[]
+  estimates    Estimate[]
+  services     Service[]
+  priceBook    PriceBookItem[]
+  campaigns    Campaign[]
+  sequences    Sequence[]
+  bookingPages BookingPage[]
+  phoneNumbers PhoneNumber[]
+  adTrackers   AdTracker[]
+  properties   Property[]
+  settings     CompanySettings?
+}
+
+model CompanySettings {
+  id                    String  @id @default(cuid())
+  companyId             String  @unique
+  company               Company @relation(fields: [companyId], references: [id])
+  autoConfirmBookings   Boolean @default(false)
+  sendJobReminders      Boolean @default(true)
+  reminderHoursBefore   Int     @default(24)
+  autoRequestReviews    Boolean @default(true)
+  reviewDelayHours      Int     @default(2)
+  taxRate               Float   @default(0)
+  invoicePrefix         String  @default("INV")
+  estimatePrefix        String  @default("EST")
+  defaultPaymentTerms   Int     @default(30)
+  notificationEmail     Boolean @default(true)
+  notificationSms       Boolean @default(true)
+  brandColor            String  @default("#2563eb")
+}
+
+// ============ CRM ============
+
+model Client {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  address     String?
+  city        String?
+  state       String?
+  zip         String?
+  lat         Float?
+  lng         Float?
+  source      String?  // google, referral, facebook, website, etc.
+  tags        String?  // comma-separated tags
+  notes       String?
+  status      String   @default("lead") // lead, active, inactive
+  totalSpent  Float    @default(0)
+  jobCount    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  jobs        Job[]
+  invoices    Invoice[]
+  estimates   Estimate[]
+  callLogs    CallLog[]
+  messages    Message[]
+  properties  Property[]
+}
+
+// ============ JOBS & SCHEDULING ============
+
+model Service {
+  id          String  @id @default(cuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id])
+  name        String
+  description String?
+  duration    Int     @default(60) // minutes
+  price       Float   @default(0)
+  isActive    Boolean @default(true)
+
+  jobs        Job[]
+  priceItems  PriceBookItem[]
+}
+
+model PriceBookItem {
+  id          String  @id @default(cuid())
+  companyId   String
+  company     Company @relation(fields: [companyId], references: [id])
+  serviceId   String?
+  service     Service? @relation(fields: [serviceId], references: [id])
+  name        String
+  description String?
+  unit        String   @default("each") // each, hour, cubic_yard, load, etc.
+  price       Float
+  isActive    Boolean  @default(true)
+}
+
+model Job {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  clientId        String
+  client          Client   @relation(fields: [clientId], references: [id])
+  serviceId       String?
+  service         Service? @relation(fields: [serviceId], references: [id])
+  assignedToId    String?
+  assignedTo      User?    @relation("AssignedEmployee", fields: [assignedToId], references: [id])
+  createdById     String
+  createdBy       User     @relation("CreatedBy", fields: [createdById], references: [id])
+  title           String
+  description     String?
+  status          String   @default("scheduled") // scheduled, in_progress, completed, cancelled
+  priority        String   @default("normal") // low, normal, high, urgent
+  scheduledDate   DateTime
+  scheduledTime   String?
+  estimatedDuration Int?   // minutes
+  actualDuration  Int?
+  address         String?
+  city            String?
+  state           String?
+  zip             String?
+  lat             Float?
+  lng             Float?
+  totalAmount     Float    @default(0)
+  notes           String?
+  internalNotes   String?
+  beforePhotos    String?  // JSON array of URLs
+  afterPhotos     String?  // JSON array of URLs
+  trackingNumber  String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  lineItems       JobLineItem[]
+  invoice         Invoice?
+  timeEntries     TimeEntry[]
+  turnover        Turnover?
+}
+
+model JobLineItem {
+  id          String @id @default(cuid())
+  jobId       String
+  job         Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  quantity    Float  @default(1)
+  unitPrice   Float
+  total       Float
+}
+
+model TimeEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id])
+  clockIn   DateTime
+  clockOut  DateTime?
+  duration  Int?     // minutes
+  notes     String?
+}
+
+// ============ INVOICING & PAYMENTS ============
+
+model Invoice {
+  id            String   @id @default(cuid())
+  companyId     String
+  company       Company  @relation(fields: [companyId], references: [id])
+  clientId      String
+  client        Client   @relation(fields: [clientId], references: [id])
+  createdById   String
+  createdBy     User     @relation(fields: [createdById], references: [id])
+  jobId         String?  @unique
+  job           Job?     @relation(fields: [jobId], references: [id])
+  invoiceNumber String
+  status        String   @default("draft") // draft, sent, viewed, paid, overdue, cancelled
+  subtotal      Float    @default(0)
+  taxRate       Float    @default(0)
+  taxAmount     Float    @default(0)
+  tipAmount     Float    @default(0)
+  totalAmount   Float    @default(0)
+  paidAmount    Float    @default(0)
+  dueDate       DateTime?
+  paidAt        DateTime?
+  sentAt        DateTime?
+  notes         String?
+  paymentMethod String?  // stripe, cash, check
+  stripePaymentId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  lineItems     InvoiceLineItem[]
+  payments      Payment[]
+}
+
+model InvoiceLineItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  quantity    Float   @default(1)
+  unitPrice   Float
+  total       Float
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  invoiceId     String
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id])
+  amount        Float
+  method        String   // stripe, cash, check
+  stripePaymentId String?
+  notes         String?
+  createdAt     DateTime @default(now())
+}
+
+// ============ ESTIMATES ============
+
+model Estimate {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id])
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id])
+  createdById    String
+  createdBy      User     @relation(fields: [createdById], references: [id])
+  estimateNumber String
+  status         String   @default("draft") // draft, sent, viewed, accepted, declined, expired
+  subtotal       Float    @default(0)
+  taxRate        Float    @default(0)
+  taxAmount      Float    @default(0)
+  totalAmount    Float    @default(0)
+  validUntil     DateTime?
+  notes          String?
+  sentAt         DateTime?
+  respondedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lineItems      EstimateLineItem[]
+}
+
+model EstimateLineItem {
+  id          String   @id @default(cuid())
+  estimateId  String
+  estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  quantity    Float    @default(1)
+  unitPrice   Float
+  total       Float
+}
+
+// ============ COMMUNICATION ============
+
+model PhoneNumber {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  number      String
+  label       String?
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model CallLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  clientId    String?
+  client      Client?  @relation(fields: [clientId], references: [id])
+  direction   String   // inbound, outbound
+  fromNumber  String
+  toNumber    String
+  duration    Int?     // seconds
+  status      String   // completed, missed, voicemail
+  recordingUrl String?
+  transcript  String?
+  notes       String?
+  createdAt   DateTime @default(now())
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  clientId    String?
+  client      Client?  @relation(fields: [clientId], references: [id])
+  direction   String   // inbound, outbound
+  channel     String   // sms, email
+  fromAddress String
+  toAddress   String
+  subject     String?
+  body        String
+  status      String   @default("sent") // sent, delivered, failed, received
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  body      String
+  type      String   // job, payment, review, system
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+}
+
+// ============ MARKETING ============
+
+model Campaign {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  name        String
+  type        String   // sms_blast, email_blast, voicemail_blast, postcard_blast
+  status      String   @default("draft") // draft, scheduled, sending, sent, cancelled
+  content     String?
+  subject     String?  // for email
+  recipientCount Int   @default(0)
+  sentCount   Int      @default(0)
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Sequence {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  name        String
+  description String?
+  trigger     String   // job_completed, estimate_sent, new_lead, etc.
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  steps       SequenceStep[]
+}
+
+model SequenceStep {
+  id          String   @id @default(cuid())
+  sequenceId  String
+  sequence    Sequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  order       Int
+  type        String   // sms, email, delay, condition
+  delayHours  Int?
+  content     String?
+  subject     String?
+}
+
+model ReviewRequest {
+  id          String   @id @default(cuid())
+  clientName  String
+  clientEmail String?
+  clientPhone String?
+  platform    String   @default("google") // google, yelp, facebook
+  status      String   @default("sent") // sent, clicked, reviewed
+  rating      Int?
+  reviewText  String?
+  aiResponse  String?
+  sentAt      DateTime @default(now())
+  reviewedAt  DateTime?
+}
+
+// ============ ONLINE BOOKING ============
+
+model BookingPage {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  slug        String   @unique
+  title       String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  bookings    Booking[]
+}
+
+model Booking {
+  id              String      @id @default(cuid())
+  bookingPageId   String
+  bookingPage     BookingPage @relation(fields: [bookingPageId], references: [id])
+  customerName    String
+  customerEmail   String?
+  customerPhone   String
+  customerAddress String?
+  serviceType     String?
+  preferredDate   DateTime
+  preferredTime   String?
+  notes           String?
+  status          String      @default("pending") // pending, confirmed, cancelled
+  createdAt       DateTime    @default(now())
+}
+
+// ============ SHORT-TERM RENTAL MANAGEMENT ============
+
+model Property {
+  id            String   @id @default(cuid())
+  companyId     String
+  company       Company  @relation(fields: [companyId], references: [id])
+  clientId      String?
+  client        Client?  @relation(fields: [clientId], references: [id])
+  name          String
+  address       String
+  city          String?
+  state         String?
+  zip           String?
+  lat           Float?
+  lng           Float?
+  propertyType  String   @default("airbnb") // airbnb, vrbo, booking_com, direct
+  bedrooms      Int      @default(1)
+  bathrooms     Int      @default(1)
+  squareFeet    Int?
+  doorCode      String?
+  lockboxCode   String?
+  wifiName      String?
+  wifiPassword  String?
+  parkingInfo   String?
+  hostName      String?
+  hostPhone     String?
+  hostEmail     String?
+  specialInstructions String?
+  supplyLocation String?
+  checkInTime   String?  @default("15:00")
+  checkOutTime  String?  @default("11:00")
+  cleaningFee   Float?
+  isActive      Boolean  @default(true)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  icalFeeds     ICalFeed[]
+  checklists    PropertyChecklist[]
+  turnovers     Turnover[]
+}
+
+model ICalFeed {
+  id            String   @id @default(cuid())
+  propertyId    String
+  property      Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  platform      String   // airbnb, vrbo, booking_com, guesty, hospitable, other
+  feedUrl       String
+  lastSyncAt    DateTime?
+  syncStatus    String   @default("active") // active, error, paused
+  syncError     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model PropertyChecklist {
+  id            String   @id @default(cuid())
+  propertyId    String
+  property      Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  items         ChecklistItem[]
+}
+
+model ChecklistItem {
+  id            String            @id @default(cuid())
+  checklistId   String
+  checklist     PropertyChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  order         Int
+  task          String
+  category      String?  // bedroom, bathroom, kitchen, living_area, exterior, supplies
+  isRequired    Boolean  @default(true)
+  notes         String?
+}
+
+model Turnover {
+  id            String   @id @default(cuid())
+  propertyId    String
+  property      Property @relation(fields: [propertyId], references: [id])
+  jobId         String?  @unique
+  job           Job?     @relation(fields: [jobId], references: [id])
+  guestCheckout DateTime
+  guestCheckin  DateTime?
+  turnaroundHrs Float?
+  guestName     String?
+  platform      String?  // airbnb, vrbo, booking_com, direct
+  status        String   @default("upcoming") // upcoming, in_progress, completed, missed
+  autoCreated   Boolean  @default(false)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ============ AD TRACKING ============
+
+model AdTracker {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  platform    String   // google_ads, facebook_ads, etc.
+  campaignName String?
+  clicks      Int      @default(0)
+  impressions Int      @default(0)
+  conversions Int      @default(0)
+  spend       Float    @default(0)
+  revenue     Float    @default(0)
+  date        DateTime
+  createdAt   DateTime @default(now())
+}
