@@ -3,6 +3,7 @@ generator client {
 }
 
 datasource db {
+  // For production: change to "postgresql" and set DATABASE_URL to your Postgres connection string
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
