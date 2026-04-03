@@ -103,20 +103,90 @@ export async function PUT(request: NextRequest) {
       }
 
       if (settingsData) {
-        const allowedSettingsFields = [
-          "autoConfirmBookings", "sendJobReminders", "reminderHoursBefore",
-          "autoRequestReviews", "reviewDelayHours", "taxRate",
-          "invoicePrefix", "estimatePrefix", "defaultPaymentTerms",
-          "notificationEmail", "notificationSms", "brandColor",
-          "businessHoursStart", "businessHoursEnd", "workDays",
-          "defaultJobDuration", "bufferTimeBetweenJobs",
-          "allowWeekendBooking", "maxAdvanceBookingDays",
-        ];
         const settingsUpdate: Record<string, unknown> = {};
-        for (const field of allowedSettingsFields) {
+
+        // Boolean fields (handle both boolean and object values)
+        const boolFields = [
+          "autoConfirmBookings", "sendJobReminders", "autoRequestReviews",
+          "allowWeekendBooking",
+        ];
+        for (const field of boolFields) {
           if (settingsData[field] !== undefined) {
-            settingsUpdate[field] = settingsData[field];
+            settingsUpdate[field] = typeof settingsData[field] === "boolean"
+              ? settingsData[field]
+              : !!settingsData[field];
           }
+        }
+
+        // notificationEmail/notificationSms: frontend may send objects or booleans
+        if (settingsData.notificationEmail !== undefined) {
+          settingsUpdate.notificationEmail = typeof settingsData.notificationEmail === "boolean"
+            ? settingsData.notificationEmail
+            : true; // if object was sent, it means notifications are configured = enabled
+        }
+        if (settingsData.notificationSms !== undefined) {
+          settingsUpdate.notificationSms = typeof settingsData.notificationSms === "boolean"
+            ? settingsData.notificationSms
+            : true;
+        }
+
+        // Integer fields
+        const intFields = [
+          "reminderHoursBefore", "reviewDelayHours",
+          "defaultJobDuration", "bufferTimeBetweenJobs", "maxAdvanceBookingDays",
+        ];
+        for (const field of intFields) {
+          if (settingsData[field] !== undefined) {
+            const val = parseInt(String(settingsData[field]), 10);
+            if (!isNaN(val)) settingsUpdate[field] = val;
+          }
+        }
+
+        // defaultPaymentTerms: frontend sends "net_30", "net_15", "due_on_receipt", etc.
+        if (settingsData.defaultPaymentTerms !== undefined) {
+          const termStr = String(settingsData.defaultPaymentTerms);
+          const match = termStr.match(/(\d+)/);
+          if (match) {
+            settingsUpdate.defaultPaymentTerms = parseInt(match[1], 10);
+          } else if (termStr === "due_on_receipt") {
+            settingsUpdate.defaultPaymentTerms = 0;
+          } else {
+            const val = parseInt(termStr, 10);
+            if (!isNaN(val)) settingsUpdate.defaultPaymentTerms = val;
+          }
+        }
+
+        // Float fields
+        if (settingsData.taxRate !== undefined) {
+          const val = parseFloat(String(settingsData.taxRate));
+          if (!isNaN(val)) settingsUpdate.taxRate = val;
+        }
+
+        // String fields
+        const strFields = [
+          "invoicePrefix", "estimatePrefix", "brandColor",
+          "businessHoursStart", "businessHoursEnd", "workDays",
+        ];
+        for (const field of strFields) {
+          if (settingsData[field] !== undefined) {
+            settingsUpdate[field] = String(settingsData[field]);
+          }
+        }
+
+        // Map frontend field names to schema field names
+        if (settingsData.jobReminders !== undefined) {
+          settingsUpdate.sendJobReminders = !!settingsData.jobReminders;
+        }
+        if (settingsData.jobReminderHours !== undefined) {
+          const val = parseInt(String(settingsData.jobReminderHours), 10);
+          if (!isNaN(val)) settingsUpdate.reminderHoursBefore = val;
+        }
+        if (settingsData.reviewRequests !== undefined) {
+          settingsUpdate.autoRequestReviews = !!settingsData.reviewRequests;
+        }
+        if (settingsData.reviewRequestDelay !== undefined) {
+          const val = parseInt(String(settingsData.reviewRequestDelay), 10);
+          if (!isNaN(val)) settingsUpdate.reviewDelayHours = val;
         }
 
         updatedSettings = await tx.companySettings.upsert({
