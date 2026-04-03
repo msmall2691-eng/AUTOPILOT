@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -114,7 +114,16 @@ function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
 // Page
 // ---------------------------------------------------------------------------
 export default function NewJobPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-24"><div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" /></div>}>
+      <NewJobForm />
+    </Suspense>
+  );
+}
+
+function NewJobForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
 
@@ -129,7 +138,7 @@ export default function NewJobPage() {
   const [assignedToId, setAssignedToId] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledDate, setScheduledDate] = useState(searchParams.get("date") || "");
   const [scheduledTime, setScheduledTime] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");

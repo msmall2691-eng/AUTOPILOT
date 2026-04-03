@@ -11,6 +11,7 @@ import {
   Pencil,
   Trash2,
   FileText,
+  Briefcase,
 } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -114,6 +115,23 @@ export default function EstimateDetailPage({
     }
   }
 
+  async function handleConvertToJob() {
+    setConverting(true);
+    try {
+      const res = await fetch(`/api/estimates/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "convert_to_job" }),
+      });
+      if (!res.ok) throw new Error("Failed to convert estimate to job");
+      const data = await res.json();
+      router.push(`/jobs/${data.job.id}`);
+    } catch (err) {
+      console.error("Error converting estimate to job:", err);
+      setConverting(false);
+    }
+  }
+
   async function handleConvertToInvoice() {
     setConverting(true);
     try {
@@ -204,14 +222,25 @@ export default function EstimateDetailPage({
 
         <div className="flex flex-wrap items-center gap-2">
           {estimate.status === "accepted" && (
-            <Button
-              size="sm"
-              onClick={handleConvertToInvoice}
-              isLoading={converting}
-            >
-              <FileText className="mr-1 h-4 w-4" />
-              Convert to Invoice
-            </Button>
+            <>
+              <Button
+                size="sm"
+                onClick={handleConvertToJob}
+                isLoading={converting}
+              >
+                <Briefcase className="mr-1 h-4 w-4" />
+                Convert to Job
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleConvertToInvoice}
+                isLoading={converting}
+              >
+                <FileText className="mr-1 h-4 w-4" />
+                Convert to Invoice
+              </Button>
+            </>
           )}
           {estimate.status === "draft" && (
             <Button

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { generateTrackingNumber } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // GET /api/estimates/[id] — Fetch a single estimate with all relations
@@ -164,7 +165,7 @@ export async function PATCH(
 }
 
 // ---------------------------------------------------------------------------
-// POST /api/estimates/[id] — Convert estimate to invoice
+// POST /api/estimates/[id] — Convert estimate to job or invoice
 // ---------------------------------------------------------------------------
 export async function POST(
   request: NextRequest,
@@ -174,105 +175,138 @@ export async function POST(
     const cookieStore = await cookies();
     const session = await getSession(cookieStore);
 
-    if (!session) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 }
-      );
-    }
-
-    if (!session.companyId) {
-      return NextResponse.json(
-        { error: "No company associated with this account" },
-        { status: 401 }
-      );
+    if (!session?.companyId) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     const { id } = await params;
     const companyId = session.companyId;
 
+    const body = await request.json();
+    const action = body.action;
+
     const estimate = await prisma.estimate.findFirst({
       where: { id, companyId },
-      include: { lineItems: true },
+      include: { lineItems: true, client: true },
     });
 
     if (!estimate) {
-      return NextResponse.json(
-        { error: "Estimate not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Estimate not found" }, { status: 404 });
     }
 
-    // Generate invoice number
-    const settings = await prisma.companySettings.findUnique({
-      where: { companyId },
-    });
-
-    const prefix = settings?.invoicePrefix || "INV";
-
-    const lastInvoice = await prisma.invoice.findFirst({
-      where: { companyId },
-      orderBy: { createdAt: "desc" },
-      select: { invoiceNumber: true },
-    });
-
-    let nextNum = 1001;
-    if (lastInvoice?.invoiceNumber) {
-      const match = lastInvoice.invoiceNumber.match(/(\d+)$/);
-      if (match) {
-        nextNum = parseInt(match[1], 10) + 1;
+    // ---- Convert to Job ----
+    if (action === "convert_to_job") {
+      if (estimate.status !== "accepted") {
+        return NextResponse.json(
+          { error: "Only accepted estimates can be converted to jobs" },
+          { status: 400 }
+        );
       }
-    }
 
-    const invoiceNumber = `${prefix}-${String(nextNum).padStart(4, "0")}`;
+      let trackingNumber = generateTrackingNumber();
+      let attempts = 0;
+      while (attempts < 5) {
+        const existing = await prisma.job.findUnique({
+          where: { trackingNumber },
+          select: { id: true },
+        });
+        if (!existing) break;
+        trackingNumber = generateTrackingNumber();
+        attempts++;
+      }
 
-    // Create invoice from estimate data
-    const invoice = await prisma.invoice.create({
-      data: {
-        companyId,
-        clientId: estimate.clientId,
-        createdById: session.id,
-        invoiceNumber,
-        status: "draft",
-        subtotal: estimate.subtotal,
-        taxRate: estimate.taxRate,
-        taxAmount: estimate.taxAmount,
-        totalAmount: estimate.totalAmount,
-        notes: estimate.notes,
-        lineItems: {
-          create: estimate.lineItems.map((item) => ({
-            name: item.name,
-            description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            total: item.total,
-          })),
-        },
-      },
-      include: {
-        client: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
+      const job = await prisma.job.create({
+        data: {
+          companyId,
+          clientId: estimate.clientId,
+          createdById: session.id,
+          title: `Job from ${estimate.estimateNumber}`,
+          description: estimate.notes || undefined,
+          status: "scheduled",
+          priority: "normal",
+          scheduledDate: body.scheduledDate ? new Date(body.scheduledDate) : new Date(),
+          scheduledTime: body.scheduledTime || undefined,
+          address: estimate.client.address || undefined,
+          city: estimate.client.city || undefined,
+          state: estimate.client.state || undefined,
+          zip: estimate.client.zip || undefined,
+          totalAmount: estimate.totalAmount,
+          trackingNumber,
+          lineItems: {
+            create: estimate.lineItems.map((item) => ({
+              name: item.name,
+              description: item.description,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              total: item.total,
+            })),
           },
         },
-        lineItems: true,
-      },
-    });
+      });
 
-    // Mark estimate as converted
-    await prisma.estimate.update({
-      where: { id },
-      data: { status: "accepted" },
-    });
+      return NextResponse.json({ job }, { status: 201 });
+    }
 
-    return NextResponse.json({ invoice }, { status: 201 });
+    // ---- Convert to Invoice ----
+    if (action === "convert_to_invoice") {
+      if (estimate.status !== "accepted") {
+        return NextResponse.json(
+          { error: "Only accepted estimates can be converted to invoices" },
+          { status: 400 }
+        );
+      }
+
+      const settings = await prisma.companySettings.findUnique({
+        where: { companyId },
+      });
+      const prefix = settings?.invoicePrefix || "INV";
+
+      const lastInvoice = await prisma.invoice.findFirst({
+        where: { companyId },
+        orderBy: { createdAt: "desc" },
+        select: { invoiceNumber: true },
+      });
+
+      let nextNum = 1001;
+      if (lastInvoice?.invoiceNumber) {
+        const match = lastInvoice.invoiceNumber.match(/(\d+)$/);
+        if (match) nextNum = parseInt(match[1], 10) + 1;
+      }
+
+      const invoiceNumber = `${prefix}-${String(nextNum).padStart(4, "0")}`;
+
+      const invoice = await prisma.invoice.create({
+        data: {
+          companyId,
+          clientId: estimate.clientId,
+          createdById: session.id,
+          invoiceNumber,
+          status: "draft",
+          subtotal: estimate.subtotal,
+          taxRate: estimate.taxRate,
+          taxAmount: estimate.taxAmount,
+          totalAmount: estimate.totalAmount,
+          notes: estimate.notes,
+          lineItems: {
+            create: estimate.lineItems.map((item) => ({
+              name: item.name,
+              description: item.description,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              total: item.total,
+            })),
+          },
+        },
+      });
+
+      return NextResponse.json({ invoice }, { status: 201 });
+    }
+
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
     console.error("POST /api/estimates/[id] error:", error);
     return NextResponse.json(
-      { error: "Failed to convert estimate to invoice" },
+      { error: "Failed to process estimate conversion" },
       { status: 500 }
     );
   }
