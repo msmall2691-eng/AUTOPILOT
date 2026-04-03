@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   Search,
@@ -18,8 +19,23 @@ interface TopbarProps {
 
 export function Topbar({ onMenuToggle }: TopbarProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [user, setUser] = useState<{
+    firstName: string;
+    lastName: string;
+    email: string;
+  } | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationCount = 3;
+  const router = useRouter();
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user) setUser(data.user);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -33,6 +49,21 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const initials = user
+    ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`
+    : "..";
+  const fullName = user ? `${user.firstName} ${user.lastName}` : "Loading...";
+  const email = user?.email ?? "";
+
+  async function handleSignOut() {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // ignore
+    }
+    router.push("/login");
+  }
 
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-gray-200 bg-white px-4 sm:px-6">
@@ -79,10 +110,10 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
             className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-gray-100"
           >
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-semibold text-white uppercase">
-              JD
+              {initials}
             </div>
             <span className="hidden text-sm font-medium text-gray-700 sm:block">
-              John Doe
+              {fullName}
             </span>
             <ChevronDown className="hidden h-4 w-4 text-gray-400 sm:block" />
           </button>
@@ -90,11 +121,11 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
           {userMenuOpen && (
             <div className="absolute right-0 mt-1 w-56 origin-top-right rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
               <div className="border-b border-gray-100 px-4 py-2.5">
-                <p className="text-sm font-medium text-gray-900">John Doe</p>
-                <p className="text-xs text-gray-500">john@example.com</p>
+                <p className="text-sm font-medium text-gray-900">{fullName}</p>
+                <p className="text-xs text-gray-500">{email}</p>
               </div>
               <a
-                href="/settings/profile"
+                href="/settings"
                 className="flex items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
               >
                 <User className="h-4 w-4 text-gray-400" />
@@ -108,7 +139,10 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
                 Settings
               </a>
               <div className="border-t border-gray-100">
-                <button className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                <button
+                  onClick={handleSignOut}
+                  className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
                   <LogOut className="h-4 w-4 text-gray-400" />
                   Sign out
                 </button>
