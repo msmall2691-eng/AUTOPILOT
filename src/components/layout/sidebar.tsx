@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -76,9 +76,23 @@ interface SidebarProps {
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({
     "/marketing": true,
   });
+  const [user, setUser] = useState<{ firstName: string; lastName: string; email: string } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data?.user) setUser(data.user); })
+      .catch(() => {});
+  }, []);
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  }
 
   function toggleExpand(href: string) {
     setExpandedItems((prev) => ({ ...prev, [href]: !prev[href] }));
@@ -200,13 +214,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-white">
-                John Doe
+                {user ? `${user.firstName} ${user.lastName}` : "Loading..."}
               </p>
               <p className="truncate text-xs text-indigo-300">
-                john@example.com
+                {user?.email ?? ""}
               </p>
             </div>
             <button
+              onClick={handleLogout}
               className="rounded-md p-1.5 text-indigo-300 hover:bg-indigo-900 hover:text-white"
               aria-label="Log out"
             >
