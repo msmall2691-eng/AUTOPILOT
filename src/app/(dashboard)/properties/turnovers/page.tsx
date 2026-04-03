@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Badge, type BadgeColor } from "@/components/ui/badge";
+import { StatsCard } from "@/components/ui/stats-card";
 import {
   Table,
   TableHeader,
@@ -13,131 +15,46 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
-import { StatsCard } from "@/components/ui/stats-card";
+import { cn, formatDate } from "@/lib/utils";
 import {
-  RefreshCw,
+  CalendarCheck,
   Clock,
-  CheckCircle2,
   AlertTriangle,
-  Calendar,
+  Plus,
   List,
-  Home,
-  User,
-  ArrowRight,
+  LayoutGrid,
+  Play,
+  CheckCircle2,
+  UserPlus,
+  Eye,
   Zap,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
-const mockTurnovers = [
-  {
-    id: "1",
-    propertyName: "Oceanview Studio",
-    address: "123 Beach Blvd, Miami FL",
-    guestName: "Sarah Johnson",
-    guestCheckout: "2026-04-02T11:00:00",
-    guestCheckin: "2026-04-02T15:00:00",
-    turnaroundHrs: 4,
-    assignedTo: "Maria Garcia",
-    status: "in_progress",
-    platform: "airbnb",
-    autoCreated: true,
-  },
-  {
-    id: "2",
-    propertyName: "Downtown Loft",
-    address: "456 Main St, Austin TX",
-    guestName: "Mike Chen",
-    guestCheckout: "2026-04-02T10:00:00",
-    guestCheckin: "2026-04-02T16:00:00",
-    turnaroundHrs: 6,
-    assignedTo: null,
-    status: "upcoming",
-    platform: "vrbo",
-    autoCreated: true,
-  },
-  {
-    id: "3",
-    propertyName: "Mountain Cabin",
-    address: "789 Pine Rd, Aspen CO",
-    guestName: "Lisa Park",
-    guestCheckout: "2026-04-02T11:00:00",
-    guestCheckin: "2026-04-03T15:00:00",
-    turnaroundHrs: 28,
-    assignedTo: "Carlos Ruiz",
-    status: "completed",
-    platform: "airbnb",
-    autoCreated: true,
-  },
-  {
-    id: "4",
-    propertyName: "Lakeside Villa",
-    address: "321 Lake Dr, Nashville TN",
-    guestName: "Tom Wilson",
-    guestCheckout: "2026-04-03T10:00:00",
-    guestCheckin: "2026-04-03T15:00:00",
-    turnaroundHrs: 5,
-    assignedTo: "Maria Garcia",
-    status: "upcoming",
-    platform: "booking_com",
-    autoCreated: false,
-  },
-  {
-    id: "5",
-    propertyName: "City Center Apt",
-    address: "555 Urban Ave, Portland OR",
-    guestName: "Emma Davis",
-    guestCheckout: "2026-04-01T11:00:00",
-    guestCheckin: "2026-04-01T16:00:00",
-    turnaroundHrs: 5,
-    assignedTo: "Ana Martinez",
-    status: "missed",
-    platform: "airbnb",
-    autoCreated: true,
-  },
-  {
-    id: "6",
-    propertyName: "Beachfront Condo",
-    address: "888 Shore Rd, Destin FL",
-    guestName: "James Brown",
-    guestCheckout: "2026-04-04T10:00:00",
-    guestCheckin: "2026-04-04T15:00:00",
-    turnaroundHrs: 5,
-    assignedTo: null,
-    status: "upcoming",
-    platform: "vrbo",
-    autoCreated: true,
-  },
-  {
-    id: "7",
-    propertyName: "Oceanview Studio",
-    address: "123 Beach Blvd, Miami FL",
-    guestName: "Kate Miller",
-    guestCheckout: "2026-04-05T11:00:00",
-    guestCheckin: "2026-04-05T16:00:00",
-    turnaroundHrs: 5,
-    assignedTo: null,
-    status: "upcoming",
-    platform: "airbnb",
-    autoCreated: true,
-  },
-  {
-    id: "8",
-    propertyName: "Downtown Loft",
-    address: "456 Main St, Austin TX",
-    guestName: "Alex Turner",
-    guestCheckout: "2026-04-06T10:00:00",
-    guestCheckin: "2026-04-06T14:00:00",
-    turnaroundHrs: 4,
-    assignedTo: "Carlos Ruiz",
-    status: "upcoming",
-    platform: "vrbo",
-    autoCreated: true,
-  },
-];
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+type TurnoverStatus = "upcoming" | "in_progress" | "completed" | "missed";
 
-const statusConfig: Record<
-  string,
-  { label: string; color: "blue" | "yellow" | "green" | "red" }
+interface Turnover {
+  id: string;
+  propertyId: string;
+  propertyName: string;
+  guestName: string;
+  checkoutDate: string;
+  checkoutTime: string;
+  checkinDate: string;
+  checkinTime: string;
+  assignedCleaner: string | null;
+  status: TurnoverStatus;
+  autoCreated: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+const STATUS_CONFIG: Record<
+  TurnoverStatus,
+  { label: string; color: BadgeColor }
 > = {
   upcoming: { label: "Upcoming", color: "blue" },
   in_progress: { label: "In Progress", color: "yellow" },
@@ -145,340 +62,602 @@ const statusConfig: Record<
   missed: { label: "Missed", color: "red" },
 };
 
-const platformColors: Record<string, string> = {
-  airbnb: "bg-pink-100 text-pink-700",
-  vrbo: "bg-blue-100 text-blue-700",
-  booking_com: "bg-indigo-100 text-indigo-700",
-  direct: "bg-gray-100 text-gray-700",
-};
+function turnaroundTime(
+  checkoutDate: string,
+  checkoutTime: string,
+  checkinDate: string,
+  checkinTime: string
+): string {
+  const out = new Date(`${checkoutDate}T${checkoutTime}`);
+  const inn = new Date(`${checkinDate}T${checkinTime}`);
+  const diffMs = inn.getTime() - out.getTime();
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  if (hours < 1) return `${minutes}m`;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
 
+function formatTime12h(time24: string): string {
+  const [h, m] = time24.split(":").map(Number);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+// ---------------------------------------------------------------------------
+// Mock Data
+// ---------------------------------------------------------------------------
+const MOCK_TURNOVERS: Turnover[] = [
+  {
+    id: "turn-1",
+    propertyId: "prop-1",
+    propertyName: "Oceanview Beach House",
+    guestName: "Sarah Johnson",
+    checkoutDate: "2026-04-02",
+    checkoutTime: "11:00",
+    checkinDate: "2026-04-02",
+    checkinTime: "15:00",
+    assignedCleaner: "Maria Garcia",
+    status: "in_progress",
+    autoCreated: true,
+  },
+  {
+    id: "turn-2",
+    propertyId: "prop-2",
+    propertyName: "Downtown Loft Suite",
+    guestName: "David Chen",
+    checkoutDate: "2026-04-02",
+    checkoutTime: "10:00",
+    checkinDate: "2026-04-02",
+    checkinTime: "16:00",
+    assignedCleaner: "Ana Martinez",
+    status: "upcoming",
+    autoCreated: true,
+  },
+  {
+    id: "turn-3",
+    propertyId: "prop-6",
+    propertyName: "Lakeside Bungalow",
+    guestName: "Emily Watson",
+    checkoutDate: "2026-04-02",
+    checkoutTime: "11:00",
+    checkinDate: "2026-04-02",
+    checkinTime: "14:00",
+    assignedCleaner: null,
+    status: "upcoming",
+    autoCreated: true,
+  },
+  {
+    id: "turn-4",
+    propertyId: "prop-4",
+    propertyName: "Palm Villa Resort",
+    guestName: "Michael Torres",
+    checkoutDate: "2026-04-03",
+    checkoutTime: "11:00",
+    checkinDate: "2026-04-03",
+    checkinTime: "15:00",
+    assignedCleaner: "Maria Garcia",
+    status: "upcoming",
+    autoCreated: true,
+  },
+  {
+    id: "turn-5",
+    propertyId: "prop-3",
+    propertyName: "Mountain Retreat Cabin",
+    guestName: "Lisa Park",
+    checkoutDate: "2026-04-04",
+    checkoutTime: "10:00",
+    checkinDate: "2026-04-05",
+    checkinTime: "15:00",
+    assignedCleaner: "Carlos Rivera",
+    status: "upcoming",
+    autoCreated: false,
+  },
+  {
+    id: "turn-6",
+    propertyId: "prop-1",
+    propertyName: "Oceanview Beach House",
+    guestName: "James Miller",
+    checkoutDate: "2026-04-01",
+    checkoutTime: "11:00",
+    checkinDate: "2026-04-01",
+    checkinTime: "15:00",
+    assignedCleaner: "Maria Garcia",
+    status: "completed",
+    autoCreated: true,
+  },
+  {
+    id: "turn-7",
+    propertyId: "prop-5",
+    propertyName: "Harbor View Apartment",
+    guestName: "Rachel Kim",
+    checkoutDate: "2026-04-01",
+    checkoutTime: "10:00",
+    checkinDate: "2026-04-01",
+    checkinTime: "14:00",
+    assignedCleaner: null,
+    status: "missed",
+    autoCreated: false,
+  },
+  {
+    id: "turn-8",
+    propertyId: "prop-2",
+    propertyName: "Downtown Loft Suite",
+    guestName: "Tom Bradley",
+    checkoutDate: "2026-04-05",
+    checkoutTime: "11:00",
+    checkinDate: "2026-04-05",
+    checkinTime: "16:00",
+    assignedCleaner: "Ana Martinez",
+    status: "upcoming",
+    autoCreated: true,
+  },
+];
+
+const PROPERTY_FILTER_OPTIONS = [
+  { value: "", label: "All Properties" },
+  { value: "prop-1", label: "Oceanview Beach House" },
+  { value: "prop-2", label: "Downtown Loft Suite" },
+  { value: "prop-3", label: "Mountain Retreat Cabin" },
+  { value: "prop-4", label: "Palm Villa Resort" },
+  { value: "prop-5", label: "Harbor View Apartment" },
+  { value: "prop-6", label: "Lakeside Bungalow" },
+];
+
+const STATUS_FILTER_OPTIONS = [
+  { value: "", label: "All Statuses" },
+  { value: "upcoming", label: "Upcoming" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "completed", label: "Completed" },
+  { value: "missed", label: "Missed" },
+];
+
+const CLEANER_FILTER_OPTIONS = [
+  { value: "", label: "All Cleaners" },
+  { value: "Maria Garcia", label: "Maria Garcia" },
+  { value: "Ana Martinez", label: "Ana Martinez" },
+  { value: "Carlos Rivera", label: "Carlos Rivera" },
+  { value: "unassigned", label: "Unassigned" },
+];
+
+// ---------------------------------------------------------------------------
+// Timeline bar helpers
+// ---------------------------------------------------------------------------
+const TIMELINE_START = 8; // 8 AM
+const TIMELINE_END = 20; // 8 PM
+const TIMELINE_HOURS = TIMELINE_END - TIMELINE_START;
+
+function timeToHourFraction(time24: string): number {
+  const [h, m] = time24.split(":").map(Number);
+  return h + m / 60;
+}
+
+function timeToPercent(time24: string): number {
+  const fraction = timeToHourFraction(time24);
+  return ((fraction - TIMELINE_START) / TIMELINE_HOURS) * 100;
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 export default function TurnoversPage() {
   const [view, setView] = useState<"list" | "timeline">("list");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("all");
 
-  const filtered = mockTurnovers.filter((t) => {
-    if (statusFilter !== "all" && t.status !== statusFilter) return false;
+  // Filters
+  const [filterProperty, setFilterProperty] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterCleaner, setFilterCleaner] = useState("");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+
+  const turnovers = MOCK_TURNOVERS;
+
+  // Apply filters
+  const filtered = turnovers.filter((t) => {
+    if (filterProperty && t.propertyId !== filterProperty) return false;
+    if (filterStatus && t.status !== filterStatus) return false;
+    if (filterCleaner) {
+      if (filterCleaner === "unassigned" && t.assignedCleaner !== null)
+        return false;
+      if (
+        filterCleaner !== "unassigned" &&
+        t.assignedCleaner !== filterCleaner
+      )
+        return false;
+    }
+    if (filterDateFrom && t.checkoutDate < filterDateFrom) return false;
+    if (filterDateTo && t.checkoutDate > filterDateTo) return false;
     return true;
   });
 
-  const todayCount = mockTurnovers.filter(
-    (t) =>
-      new Date(t.guestCheckout).toDateString() === new Date().toDateString()
+  // Stats
+  const today = "2026-04-02";
+  const todayTurnovers = turnovers.filter(
+    (t) => t.checkoutDate === today
   ).length;
-  const weekCount = mockTurnovers.filter((t) => {
-    const d = new Date(t.guestCheckout);
-    const now = new Date();
-    const weekEnd = new Date(now.getTime() + 7 * 86400000);
-    return d >= now && d <= weekEnd;
-  }).length;
-  const pendingAssignment = mockTurnovers.filter(
-    (t) => !t.assignedTo && t.status !== "completed"
+  const thisWeekEnd = "2026-04-08";
+  const thisWeekTurnovers = turnovers.filter(
+    (t) => t.checkoutDate >= today && t.checkoutDate <= thisWeekEnd
   ).length;
-  const overdueCount = mockTurnovers.filter(
-    (t) => t.status === "missed"
+  const pendingAssignment = turnovers.filter(
+    (t) => !t.assignedCleaner && t.status !== "completed" && t.status !== "missed"
   ).length;
+  const overdue = turnovers.filter((t) => t.status === "missed").length;
+
+  // For timeline view: group today's turnovers by property
+  const todayTurnoversForTimeline = filtered.filter(
+    (t) => t.checkoutDate === today
+  );
+  const timelineProperties = Array.from(
+    new Set(todayTurnoversForTimeline.map((t) => t.propertyName))
+  );
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Turnovers</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Manage cleaning turnovers for your rental properties
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex bg-gray-100 rounded-lg p-1">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-gray-900">Turnovers</h1>
+        <div className="flex items-center gap-3">
+          {/* View toggle */}
+          <div className="flex rounded-lg bg-gray-100 p-1">
             <button
               onClick={() => setView("list")}
               className={cn(
-                "px-3 py-1.5 text-sm rounded-md transition-colors",
+                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                 view === "list"
-                  ? "bg-white shadow text-gray-900"
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
               )}
             >
-              <List className="w-4 h-4" />
+              <List className="h-4 w-4" />
+              List
             </button>
             <button
               onClick={() => setView("timeline")}
               className={cn(
-                "px-3 py-1.5 text-sm rounded-md transition-colors",
+                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
                 view === "timeline"
-                  ? "bg-white shadow text-gray-900"
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
               )}
             >
-              <Calendar className="w-4 h-4" />
+              <LayoutGrid className="h-4 w-4" />
+              Timeline
             </button>
           </div>
           <Button>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Sync Calendars
+            <Plus className="mr-2 h-4 w-4" />
+            Create Turnover
           </Button>
         </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatsCard
-          icon={Clock}
+          icon={CalendarCheck}
           label="Today's Turnovers"
-          value={String(todayCount)}
+          value={todayTurnovers}
         />
         <StatsCard
-          icon={Calendar}
+          icon={Clock}
           label="This Week"
-          value={String(weekCount)}
+          value={thisWeekTurnovers}
+        />
+        <StatsCard
+          icon={UserPlus}
+          label="Pending Assignment"
+          value={pendingAssignment}
         />
         <StatsCard
           icon={AlertTriangle}
-          label="Pending Assignment"
-          value={String(pendingAssignment)}
-          change={pendingAssignment > 0 ? -pendingAssignment : 0}
-        />
-        <StatsCard
-          icon={CheckCircle2}
           label="Overdue"
-          value={String(overdueCount)}
-          change={overdueCount > 0 ? -overdueCount : 0}
+          value={overdue}
         />
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <Select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-        >
-          <option value="all">All Statuses</option>
-          <option value="upcoming">Upcoming</option>
-          <option value="in_progress">In Progress</option>
-          <option value="completed">Completed</option>
-          <option value="missed">Missed</option>
-        </Select>
-        <Select
-          value={dateFilter}
-          onChange={(e) => setDateFilter(e.target.value)}
-        >
-          <option value="all">All Dates</option>
-          <option value="today">Today</option>
-          <option value="week">This Week</option>
-          <option value="month">This Month</option>
-        </Select>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="w-40">
+          <Input
+            label="From"
+            type="date"
+            value={filterDateFrom}
+            onChange={(e) => setFilterDateFrom(e.target.value)}
+          />
+        </div>
+        <div className="w-40">
+          <Input
+            label="To"
+            type="date"
+            value={filterDateTo}
+            onChange={(e) => setFilterDateTo(e.target.value)}
+          />
+        </div>
+        <div className="w-48">
+          <Select
+            label="Property"
+            value={filterProperty}
+            onChange={(e) => setFilterProperty(e.target.value)}
+            options={PROPERTY_FILTER_OPTIONS}
+          />
+        </div>
+        <div className="w-40">
+          <Select
+            label="Status"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            options={STATUS_FILTER_OPTIONS}
+          />
+        </div>
+        <div className="w-40">
+          <Select
+            label="Assigned To"
+            value={filterCleaner}
+            onChange={(e) => setFilterCleaner(e.target.value)}
+            options={CLEANER_FILTER_OPTIONS}
+          />
+        </div>
+        {(filterProperty || filterStatus || filterCleaner || filterDateFrom || filterDateTo) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setFilterProperty("");
+              setFilterStatus("");
+              setFilterCleaner("");
+              setFilterDateFrom("");
+              setFilterDateTo("");
+            }}
+          >
+            Clear Filters
+          </Button>
+        )}
       </div>
 
       {/* List View */}
       {view === "list" && (
-        <Card>
-          <Table>
-            <TableHeader>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Property</TableHead>
+              <TableHead>Guest</TableHead>
+              <TableHead>Checkout</TableHead>
+              <TableHead>Check-in</TableHead>
+              <TableHead>Turnaround</TableHead>
+              <TableHead>Assigned</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 ? (
               <TableRow>
-                <TableHead>Property</TableHead>
-                <TableHead>Guest</TableHead>
-                <TableHead>Checkout</TableHead>
-                <TableHead>Check-in</TableHead>
-                <TableHead>Turnaround</TableHead>
-                <TableHead>Assigned To</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Source</TableHead>
+                <TableCell colSpan={8}>
+                  <div className="py-8 text-center text-sm text-gray-400">
+                    No turnovers match the selected filters.
+                  </div>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((turnover) => {
-                const sc = statusConfig[turnover.status];
+            ) : (
+              filtered.map((turnover) => {
+                const statusCfg = STATUS_CONFIG[turnover.status];
                 return (
                   <TableRow key={turnover.id}>
                     <TableCell>
-                      <div>
-                        <div className="font-medium text-gray-900">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900">
                           {turnover.propertyName}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {turnover.address}
-                        </div>
+                        </span>
+                        {turnover.autoCreated && (
+                          <Badge color="purple">
+                            <Zap className="mr-0.5 h-3 w-3" />
+                            Auto
+                          </Badge>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>{turnover.guestName}</TableCell>
                     <TableCell>
                       <div className="text-sm">
-                        {new Date(turnover.guestCheckout).toLocaleDateString()}
+                        <div>{formatDate(turnover.checkoutDate)}</div>
+                        <div className="text-gray-400">
+                          {formatTime12h(turnover.checkoutTime)}
+                        </div>
                       </div>
-                      <div className="text-xs text-gray-500">
-                        {new Date(turnover.guestCheckout).toLocaleTimeString(
-                          [],
-                          { hour: "2-digit", minute: "2-digit" }
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        <div>{formatDate(turnover.checkinDate)}</div>
+                        <div className="text-gray-400">
+                          {formatTime12h(turnover.checkinTime)}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="inline-flex items-center gap-1 text-sm font-medium text-gray-700">
+                        <Clock className="h-3.5 w-3.5 text-gray-400" />
+                        {turnaroundTime(
+                          turnover.checkoutDate,
+                          turnover.checkoutTime,
+                          turnover.checkinDate,
+                          turnover.checkinTime
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {turnover.guestCheckin ? (
-                        <>
-                          <div className="text-sm">
-                            {new Date(
-                              turnover.guestCheckin
-                            ).toLocaleDateString()}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {new Date(
-                              turnover.guestCheckin
-                            ).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm font-medium">
-                        {turnover.turnaroundHrs}h
                       </span>
                     </TableCell>
                     <TableCell>
-                      {turnover.assignedTo ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center">
-                            <User className="w-3 h-3 text-indigo-600" />
-                          </div>
-                          <span className="text-sm">{turnover.assignedTo}</span>
-                        </div>
+                      {turnover.assignedCleaner ? (
+                        <span className="text-sm text-gray-700">
+                          {turnover.assignedCleaner}
+                        </span>
                       ) : (
-                        <Button variant="outline" size="sm">
-                          Assign
-                        </Button>
+                        <span className="text-sm italic text-gray-400">
+                          Unassigned
+                        </span>
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge color={sc.color}>{sc.label}</Badge>
+                      <Badge color={statusCfg.color} dot>
+                        {statusCfg.label}
+                      </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
-                        <span
-                          className={cn(
-                            "text-xs px-2 py-0.5 rounded-full",
-                            platformColors[turnover.platform]
+                      <div className="flex items-center justify-end gap-1">
+                        {!turnover.assignedCleaner &&
+                          turnover.status !== "completed" &&
+                          turnover.status !== "missed" && (
+                            <Button variant="ghost" size="sm" title="Assign">
+                              <UserPlus className="h-4 w-4" />
+                            </Button>
                           )}
-                        >
-                          {turnover.platform === "booking_com"
-                            ? "Booking.com"
-                            : turnover.platform.charAt(0).toUpperCase() +
-                              turnover.platform.slice(1)}
-                        </span>
-                        {turnover.autoCreated && (
-                          <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full flex items-center gap-0.5">
-                            <Zap className="w-3 h-3" />
-                            Auto
-                          </span>
+                        {turnover.status === "upcoming" && (
+                          <Button variant="ghost" size="sm" title="Start">
+                            <Play className="h-4 w-4" />
+                          </Button>
                         )}
+                        {turnover.status === "in_progress" && (
+                          <Button variant="ghost" size="sm" title="Complete">
+                            <CheckCircle2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Link href={`/properties/${turnover.propertyId}`}>
+                          <Button variant="ghost" size="sm" title="View Property">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </Link>
                       </div>
                     </TableCell>
                   </TableRow>
                 );
-              })}
-            </TableBody>
-          </Table>
-        </Card>
+              })
+            )}
+          </TableBody>
+        </Table>
       )}
 
       {/* Timeline View */}
       {view === "timeline" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Today&apos;s Timeline</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-1 mb-4">
-              {/* Time header */}
-              <div className="flex items-center">
-                <div className="w-40 shrink-0" />
-                <div className="flex-1 flex">
-                  {Array.from({ length: 12 }, (_, i) => i + 8).map((hour) => (
-                    <div
-                      key={hour}
-                      className="flex-1 text-xs text-gray-400 text-center"
-                    >
-                      {hour > 12 ? `${hour - 12}pm` : hour === 12 ? "12pm" : `${hour}am`}
-                    </div>
-                  ))}
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          {/* Timeline header with hour labels */}
+          <div className="border-b border-gray-200 bg-gray-50">
+            <div className="grid grid-cols-[200px_1fr]">
+              <div className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Property
+              </div>
+              <div className="relative py-3 pr-4">
+                <div className="flex">
+                  {Array.from({ length: TIMELINE_HOURS + 1 }, (_, i) => {
+                    const hour = TIMELINE_START + i;
+                    return (
+                      <div
+                        key={hour}
+                        className="text-xs text-gray-400 font-medium"
+                        style={{
+                          position: "absolute",
+                          left: `${(i / TIMELINE_HOURS) * 100}%`,
+                          transform: "translateX(-50%)",
+                        }}
+                      >
+                        {hour === 12
+                          ? "12 PM"
+                          : hour > 12
+                            ? `${hour - 12} PM`
+                            : `${hour} AM`}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Timeline rows */}
-            <div className="space-y-3">
-              {mockTurnovers
-                .filter(
-                  (t) =>
-                    new Date(t.guestCheckout).toDateString() ===
-                    new Date().toDateString()
-                )
-                .map((turnover) => {
-                  const checkoutHour =
-                    new Date(turnover.guestCheckout).getHours() - 8;
-                  const checkinHour = turnover.guestCheckin
-                    ? new Date(turnover.guestCheckin).getHours() - 8
-                    : checkoutHour + 4;
-                  const startPct = (checkoutHour / 12) * 100;
-                  const widthPct = ((checkinHour - checkoutHour) / 12) * 100;
-
-                  return (
-                    <div key={turnover.id} className="flex items-center">
-                      <div className="w-40 shrink-0 pr-3">
-                        <div className="text-sm font-medium text-gray-900 truncate">
-                          {turnover.propertyName}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {turnover.assignedTo || "Unassigned"}
-                        </div>
-                      </div>
-                      <div className="flex-1 relative h-10 bg-gray-50 rounded">
-                        <div
-                          className={cn(
-                            "absolute top-1 bottom-1 rounded flex items-center px-2",
-                            turnover.status === "completed"
-                              ? "bg-green-200"
-                              : turnover.status === "in_progress"
-                              ? "bg-yellow-200"
-                              : turnover.status === "missed"
-                              ? "bg-red-200"
-                              : "bg-blue-200"
-                          )}
-                          style={{
-                            left: `${Math.max(0, startPct)}%`,
-                            width: `${Math.min(widthPct, 100 - startPct)}%`,
-                          }}
-                        >
-                          <div className="flex items-center gap-1 text-xs truncate">
-                            <Home className="w-3 h-3 shrink-0" />
-                            <ArrowRight className="w-3 h-3 shrink-0" />
-                            <span className="truncate">
-                              {turnover.guestName}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+          {/* Timeline rows */}
+          {timelineProperties.length === 0 ? (
+            <div className="py-12 text-center text-sm text-gray-400">
+              No turnovers scheduled for today.
             </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {timelineProperties.map((propName) => {
+                const propTurnovers = todayTurnoversForTimeline.filter(
+                  (t) => t.propertyName === propName
+                );
+                return (
+                  <div
+                    key={propName}
+                    className="grid grid-cols-[200px_1fr] items-center"
+                  >
+                    <div className="px-4 py-4">
+                      <span className="text-sm font-medium text-gray-900 truncate block">
+                        {propName}
+                      </span>
+                    </div>
+                    <div className="relative h-16 pr-4">
+                      {/* Hour gridlines */}
+                      {Array.from({ length: TIMELINE_HOURS + 1 }, (_, i) => (
+                        <div
+                          key={i}
+                          className="absolute top-0 bottom-0 border-l border-gray-100"
+                          style={{
+                            left: `${(i / TIMELINE_HOURS) * 100}%`,
+                          }}
+                        />
+                      ))}
 
-            {mockTurnovers.filter(
-              (t) =>
-                new Date(t.guestCheckout).toDateString() ===
-                new Date().toDateString()
-            ).length === 0 && (
-              <div className="text-center py-12 text-gray-500">
-                <RefreshCw className="w-8 h-8 mx-auto mb-3 text-gray-400" />
-                <p>No turnovers scheduled for today</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                      {propTurnovers.map((t) => {
+                        const checkoutPct = Math.max(
+                          0,
+                          timeToPercent(t.checkoutTime)
+                        );
+                        const checkinPct = Math.min(
+                          100,
+                          timeToPercent(t.checkinTime)
+                        );
+                        const widthPct = checkinPct - checkoutPct;
+
+                        const statusColors: Record<TurnoverStatus, string> = {
+                          upcoming: "bg-blue-100 border-blue-300 text-blue-700",
+                          in_progress:
+                            "bg-yellow-100 border-yellow-300 text-yellow-700",
+                          completed:
+                            "bg-green-100 border-green-300 text-green-700",
+                          missed: "bg-red-100 border-red-300 text-red-700",
+                        };
+
+                        return (
+                          <div
+                            key={t.id}
+                            className={cn(
+                              "absolute top-2 bottom-2 rounded-md border px-2 flex items-center text-xs font-medium overflow-hidden",
+                              statusColors[t.status]
+                            )}
+                            style={{
+                              left: `${checkoutPct}%`,
+                              width: `${widthPct}%`,
+                            }}
+                            title={`${t.guestName} | ${formatTime12h(t.checkoutTime)} - ${formatTime12h(t.checkinTime)} | ${t.assignedCleaner ?? "Unassigned"}`}
+                          >
+                            <span className="truncate">
+                              {t.assignedCleaner
+                                ? t.assignedCleaner.split(" ")[0]
+                                : "Unassigned"}
+                              {" "}
+                              &middot; {formatTime12h(t.checkoutTime)} -{" "}
+                              {formatTime12h(t.checkinTime)}
+                            </span>
+                            {t.autoCreated && (
+                              <Zap className="ml-1 h-3 w-3 shrink-0" />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
