@@ -71,6 +71,9 @@ model Company {
   properties   Property[]
   settings     CompanySettings?
   recurringSchedules RecurringSchedule[]
+  callLogs     CallLog[]
+  messages     Message[]
+  reviewRequests ReviewRequest[]
 }
 
 model CompanySettings {
@@ -396,6 +399,8 @@ model PhoneNumber {
 
 model CallLog {
   id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
   userId      String?
   user        User?    @relation(fields: [userId], references: [id])
   clientId    String?
@@ -413,6 +418,8 @@ model CallLog {
 
 model Message {
   id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
   userId      String?
   user        User?    @relation(fields: [userId], references: [id])
   clientId    String?
@@ -424,6 +431,7 @@ model Message {
   subject     String?
   body        String
   status      String   @default("sent") // sent, delivered, failed, received
+  read        Boolean  @default(false)
   createdAt   DateTime @default(now())
 }
 
@@ -485,6 +493,8 @@ model SequenceStep {
 
 model ReviewRequest {
   id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
   clientName  String
   clientEmail String?
   clientPhone String?

@@ -543,7 +543,162 @@ export async function GET() {
       );
 
       // ------------------------------------------------------------------
-      // 13. Recurring schedules (3)
+      // 13. Call Logs (8)
+      // ------------------------------------------------------------------
+      const callLogSeed = [
+        { clientIdx: 4, direction: "inbound", fromNumber: "(704) 555-1005", toNumber: "(555) 234-5678", duration: 342, status: "completed", recordingUrl: "/recordings/call-1.mp3", transcript: "Customer called regarding a junk removal estimate for garage cleanout. Scheduled a site visit for Thursday at 10 AM.", notes: "Large garage, may need full crew.", daysAgo: 0, hour: 14 },
+        { clientIdx: 1, direction: "outbound", fromNumber: "(555) 234-5678", toNumber: "(704) 555-1002", duration: 187, status: "completed", recordingUrl: "/recordings/call-2.mp3", transcript: "Called to confirm appointment for tomorrow. Client confirmed 2-4 PM window.", notes: "Gutter job, bring ladder.", daysAgo: 0, hour: 13 },
+        { clientIdx: null, direction: "inbound", fromNumber: "(704) 555-9999", toNumber: "(555) 234-5678", duration: 0, status: "missed", recordingUrl: null, transcript: null, notes: null, daysAgo: 0, hour: 11 },
+        { clientIdx: 2, direction: "inbound", fromNumber: "(704) 555-1003", toNumber: "(555) 234-5678", duration: 95, status: "completed", recordingUrl: "/recordings/call-4.mp3", transcript: "Client asking about invoice. Confirmed payment was received. Asked about scheduling power wash for patio.", notes: "Send power wash package info via email.", daysAgo: 0, hour: 10 },
+        { clientIdx: 3, direction: "outbound", fromNumber: "(555) 234-5678", toNumber: "(704) 555-1004", duration: 420, status: "completed", recordingUrl: "/recordings/call-5.mp3", transcript: "Discussed estimate for full yard overhaul. Client wants to proceed with landscaping package.", notes: "Landscaping package selected. $600 estimate.", daysAgo: 1, hour: 16 },
+        { clientIdx: null, direction: "inbound", fromNumber: "(704) 555-8888", toNumber: "(555) 234-5678", duration: 0, status: "missed", recordingUrl: null, transcript: null, notes: null, daysAgo: 1, hour: 14 },
+        { clientIdx: 7, direction: "inbound", fromNumber: "(704) 555-1008", toNumber: "(555) 234-5678", duration: 256, status: "completed", recordingUrl: "/recordings/call-7.mp3", transcript: "Emergency call. Tree fell on fence and needs debris removal ASAP.", notes: "Emergency dispatch. Bring chainsaw and truck.", daysAgo: 1, hour: 9 },
+        { clientIdx: 0, direction: "outbound", fromNumber: "(555) 234-5678", toNumber: "(704) 555-1001", duration: 145, status: "completed", recordingUrl: null, transcript: null, notes: "Follow-up on completed garage cleanout. Client very happy.", daysAgo: 2, hour: 15 },
+      ];
+
+      await Promise.all(
+        callLogSeed.map((cl) => {
+          const callDate = new Date(now);
+          callDate.setDate(callDate.getDate() - cl.daysAgo);
+          callDate.setHours(cl.hour, Math.floor(Math.random() * 60), 0, 0);
+
+          return tx.callLog.create({
+            data: {
+              companyId: company.id,
+              userId: owner.id,
+              clientId: cl.clientIdx !== null ? clients[cl.clientIdx].id : null,
+              direction: cl.direction,
+              fromNumber: cl.fromNumber,
+              toNumber: cl.toNumber,
+              duration: cl.duration,
+              status: cl.status,
+              recordingUrl: cl.recordingUrl,
+              transcript: cl.transcript,
+              notes: cl.notes,
+              createdAt: callDate,
+            },
+          });
+        })
+      );
+
+      // ------------------------------------------------------------------
+      // 14. Messages (conversations with clients)
+      // ------------------------------------------------------------------
+      const messageSeed = [
+        // Conversation with Maria Gonzalez
+        { clientIdx: 4, direction: "inbound", channel: "sms", from: "(704) 555-1005", to: "(555) 234-5678", body: "Hi, I wanted to check on the status of my garage cleanout quote. Is someone still coming Thursday?", daysAgo: 0, hour: 14, min: 10, read: true },
+        { clientIdx: 4, direction: "outbound", channel: "sms", from: "(555) 234-5678", to: "(704) 555-1005", body: "Hi Maria! Yes, our crew is confirmed for Thursday at 10 AM. We'll bring a truck and all equipment.", daysAgo: 0, hour: 14, min: 15, read: true },
+        { clientIdx: 4, direction: "inbound", channel: "sms", from: "(704) 555-1005", to: "(555) 234-5678", body: "Perfect, thank you! How much space should I clear in the driveway for the truck?", daysAgo: 0, hour: 14, min: 18, read: false },
+        // Conversation with Robert Johnson
+        { clientIdx: 1, direction: "outbound", channel: "sms", from: "(555) 234-5678", to: "(704) 555-1002", body: "Hi Robert, this is a reminder about your gutter cleaning tomorrow between 8-10 AM.", daysAgo: 0, hour: 13, min: 0, read: true },
+        { clientIdx: 1, direction: "inbound", channel: "sms", from: "(704) 555-1002", to: "(555) 234-5678", body: "Got it, thanks for the reminder. The ladder access is on the south side of the building.", daysAgo: 0, hour: 13, min: 8, read: true },
+        // Conversation with Amanda Chen (email)
+        { clientIdx: 0, direction: "outbound", channel: "email", from: "info@steezyhauling.com", to: "amanda.chen@gmail.com", body: "Hi Amanda, just following up on your garage cleanout that we completed last week. Everything look good?", daysAgo: 1, hour: 15, min: 45, read: true },
+        { clientIdx: 0, direction: "inbound", channel: "email", from: "amanda.chen@gmail.com", to: "info@steezyhauling.com", body: "Everything is perfect! The garage looks amazing. You guys did a great job. Will definitely recommend you!", daysAgo: 1, hour: 16, min: 20, read: true },
+        // Conversation with Lisa Patel
+        { clientIdx: 2, direction: "inbound", channel: "sms", from: "(704) 555-1003", to: "(555) 234-5678", body: "Hi, do you also do pressure washing for decks? Mine needs some work before summer.", daysAgo: 0, hour: 15, min: 0, read: false },
+      ];
+
+      await Promise.all(
+        messageSeed.map((m) => {
+          const msgDate = new Date(now);
+          msgDate.setDate(msgDate.getDate() - m.daysAgo);
+          msgDate.setHours(m.hour, m.min, 0, 0);
+
+          return tx.message.create({
+            data: {
+              companyId: company.id,
+              userId: owner.id,
+              clientId: clients[m.clientIdx].id,
+              direction: m.direction,
+              channel: m.channel,
+              fromAddress: m.from,
+              toAddress: m.to,
+              body: m.body,
+              status: m.direction === "outbound" ? "sent" : "received",
+              read: m.read,
+              createdAt: msgDate,
+            },
+          });
+        })
+      );
+
+      // ------------------------------------------------------------------
+      // 15. Review Requests (8)
+      // ------------------------------------------------------------------
+      const reviewSeed = [
+        { clientName: "Amanda Chen", platform: "google", status: "reviewed", rating: 5, reviewText: "Incredible service! The crew arrived on time and hauled everything from our garage in under 2 hours. Very professional and cleaned up afterward. Highly recommend!", aiResponse: "Thank you so much, Amanda! We're thrilled to hear that our crew provided prompt and professional service. Keeping your space clean is our top priority. We look forward to serving you again!", daysAgo: 3 },
+        { clientName: "Robert Johnson", platform: "google", status: "reviewed", rating: 4, reviewText: "Good job on the gutter cleaning. The team was professional, though they showed up about 30 minutes late. Otherwise, quality work and fair pricing.", aiResponse: "Thank you for the feedback, Robert! We're glad the gutter cleaning met your expectations. We apologize for the scheduling delay and are working to improve our arrival times.", daysAgo: 5 },
+        { clientName: "Lisa Patel", platform: "yelp", status: "reviewed", rating: 5, reviewText: "Best home service company in Charlotte! They've handled our power washing twice now and both times it was flawless.", aiResponse: "Wow, thank you, Lisa! It means a lot to know that you trust us with your home maintenance needs. See you next time!", daysAgo: 8 },
+        { clientName: "James Whitmore", platform: "google", status: "reviewed", rating: 3, reviewText: "Decent work overall. The initial quote was a bit higher than expected, but they did offer a small discount.", aiResponse: "Thank you for your review, James. We appreciate your candid feedback about our pricing. We always strive to offer competitive rates.", daysAgo: 12 },
+        { clientName: "Maria Gonzalez", platform: "facebook", status: "clicked", rating: null, reviewText: null, aiResponse: null, daysAgo: 2 },
+        { clientName: "David Kim", platform: "google", status: "sent", rating: null, reviewText: null, aiResponse: null, daysAgo: 2 },
+        { clientName: "Terrence Banks", platform: "yelp", status: "sent", rating: null, reviewText: null, aiResponse: null, daysAgo: 1 },
+        { clientName: "Brian Cooper", platform: "google", status: "reviewed", rating: 5, reviewText: "Outstanding emergency service! They came out on short notice to remove storm debris. Saved us from major cleanup headaches.", aiResponse: "Thank you, Brian! We know emergencies don't wait, and we're glad our team could respond quickly. Don't hesitate to call anytime!", daysAgo: 15 },
+      ];
+
+      await Promise.all(
+        reviewSeed.map((r) => {
+          const sentDate = new Date(now);
+          sentDate.setDate(sentDate.getDate() - r.daysAgo);
+
+          return tx.reviewRequest.create({
+            data: {
+              companyId: company.id,
+              clientName: r.clientName,
+              platform: r.platform,
+              status: r.status,
+              rating: r.rating,
+              reviewText: r.reviewText,
+              aiResponse: r.aiResponse,
+              sentAt: sentDate,
+              reviewedAt: r.status === "reviewed" ? sentDate : null,
+            },
+          });
+        })
+      );
+
+      // ------------------------------------------------------------------
+      // 16. Ad Trackers (14 days of data for 2 campaigns)
+      // ------------------------------------------------------------------
+      const adCampaigns = [
+        { platform: "google_ads", campaignName: "Junk Removal - Local Search" },
+        { platform: "google_ads", campaignName: "Gutter Cleaning - Charlotte" },
+        { platform: "facebook_ads", campaignName: "Spring Cleanup Promo" },
+        { platform: "facebook_ads", campaignName: "Home Services Awareness" },
+      ];
+
+      for (let i = 13; i >= 0; i--) {
+        const adDate = new Date(now);
+        adDate.setDate(adDate.getDate() - i);
+        adDate.setHours(0, 0, 0, 0);
+
+        for (const camp of adCampaigns) {
+          const isGoogle = camp.platform === "google_ads";
+          const baseClicks = isGoogle ? 40 + Math.floor(Math.random() * 30) : 25 + Math.floor(Math.random() * 20);
+          const impressions = baseClicks * (isGoogle ? 12 : 25) + Math.floor(Math.random() * 500);
+          const conversions = Math.floor(baseClicks * (0.03 + Math.random() * 0.04));
+          const spend = +(baseClicks * (isGoogle ? 2.5 : 1.8) + Math.random() * 30).toFixed(2);
+          const revenue = +(conversions * (200 + Math.random() * 150)).toFixed(2);
+
+          await tx.adTracker.create({
+            data: {
+              companyId: company.id,
+              platform: camp.platform,
+              campaignName: camp.campaignName,
+              clicks: baseClicks,
+              impressions,
+              conversions,
+              spend,
+              revenue,
+              date: adDate,
+            },
+          });
+        }
+      }
+
+      // ------------------------------------------------------------------
+      // 17. Recurring schedules (3)
       // ------------------------------------------------------------------
       await Promise.all([
         tx.recurringSchedule.create({
