@@ -55,6 +55,13 @@ export async function GET() {
           estimatePrefix: "EST",
           defaultPaymentTerms: 30,
           brandColor: "#2563eb",
+          businessHoursStart: "08:00",
+          businessHoursEnd: "17:00",
+          workDays: "1,2,3,4,5",
+          defaultJobDuration: 60,
+          bufferTimeBetweenJobs: 15,
+          allowWeekendBooking: false,
+          maxAdvanceBookingDays: 60,
         },
       });
 
@@ -71,6 +78,7 @@ export async function GET() {
           lastName: "Williams",
           phone: "(555) 234-5678",
           role: "owner",
+          color: "#2563eb",
           companyId: company.id,
         },
       });
@@ -79,9 +87,9 @@ export async function GET() {
       // 3. Employees (3)
       // ------------------------------------------------------------------
       const employeeData = [
-        { firstName: "Jamal", lastName: "Carter", email: "jamal@steezyhauling.com", phone: "(555) 345-6789", role: "employee" as const },
-        { firstName: "Sarah", lastName: "Mitchell", email: "sarah@steezyhauling.com", phone: "(555) 456-7890", role: "admin" as const },
-        { firstName: "Diego", lastName: "Ramirez", email: "diego@steezyhauling.com", phone: "(555) 567-8901", role: "employee" as const },
+        { firstName: "Jamal", lastName: "Carter", email: "jamal@steezyhauling.com", phone: "(555) 345-6789", role: "employee" as const, color: "#16a34a" },
+        { firstName: "Sarah", lastName: "Mitchell", email: "sarah@steezyhauling.com", phone: "(555) 456-7890", role: "admin" as const, color: "#dc2626" },
+        { firstName: "Diego", lastName: "Ramirez", email: "diego@steezyhauling.com", phone: "(555) 567-8901", role: "employee" as const, color: "#9333ea" },
       ];
 
       const employees = await Promise.all(
@@ -410,6 +418,192 @@ export async function GET() {
           isActive: true,
         },
       });
+
+      // ------------------------------------------------------------------
+      // 12. Properties (4) - short-term rentals
+      // ------------------------------------------------------------------
+      const propertySeed = [
+        {
+          name: "Oceanview Beach House",
+          address: "456 Ocean Blvd",
+          city: "Wrightsville Beach",
+          state: "NC",
+          zip: "28480",
+          propertyType: "airbnb",
+          bedrooms: 3,
+          bathrooms: 2,
+          squareFeet: 1800,
+          checkInTime: "15:00",
+          checkOutTime: "11:00",
+          cleaningFee: 150,
+          hostName: "Jennifer Adams",
+          hostPhone: "(910) 555-0101",
+          hostEmail: "jen@beachrentals.com",
+          wifiName: "OceanView_Guest",
+          wifiPassword: "beach2026!",
+          doorCode: "4521",
+        },
+        {
+          name: "Downtown Loft Suite",
+          address: "220 N Tryon St #405",
+          city: "Charlotte",
+          state: "NC",
+          zip: "28202",
+          propertyType: "vrbo",
+          bedrooms: 1,
+          bathrooms: 1,
+          squareFeet: 750,
+          checkInTime: "16:00",
+          checkOutTime: "10:00",
+          cleaningFee: 85,
+          hostName: "Robert Miller",
+          hostPhone: "(704) 555-0202",
+          hostEmail: "rob@cltrentals.com",
+          wifiName: "LoftGuest",
+          wifiPassword: "welcome123",
+          lockboxCode: "7890",
+        },
+        {
+          name: "Mountain Retreat Cabin",
+          address: "1200 Mountain Rd",
+          city: "Blowing Rock",
+          state: "NC",
+          zip: "28605",
+          propertyType: "airbnb",
+          bedrooms: 4,
+          bathrooms: 3,
+          squareFeet: 2400,
+          checkInTime: "15:00",
+          checkOutTime: "10:00",
+          cleaningFee: 200,
+          hostName: "David Park",
+          hostPhone: "(828) 555-0303",
+          hostEmail: "david@mountainstays.com",
+          wifiName: "CabinGuest",
+          wifiPassword: "mountains!",
+          doorCode: "1234",
+        },
+        {
+          name: "Palm Villa Resort",
+          address: "888 Resort Dr",
+          city: "Myrtle Beach",
+          state: "SC",
+          zip: "29577",
+          propertyType: "booking_com",
+          bedrooms: 2,
+          bathrooms: 2,
+          squareFeet: 1200,
+          checkInTime: "15:00",
+          checkOutTime: "11:00",
+          cleaningFee: 125,
+          hostName: "Lisa Torres",
+          hostPhone: "(843) 555-0404",
+          hostEmail: "lisa@palmvilla.com",
+          wifiName: "PalmVilla_WiFi",
+          wifiPassword: "resort2026",
+        },
+      ];
+
+      const properties = await Promise.all(
+        propertySeed.map((p) =>
+          tx.property.create({ data: { companyId: company.id, ...p } })
+        )
+      );
+
+      // Create turnovers for properties
+      const turnoverSeed = [
+        { propertyIdx: 0, guestName: "Sarah Johnson", platform: "airbnb", status: "completed", dayOffset: -1 },
+        { propertyIdx: 0, guestName: "Mike Thompson", platform: "airbnb", status: "upcoming", dayOffset: 2 },
+        { propertyIdx: 1, guestName: "David Chen", platform: "vrbo", status: "upcoming", dayOffset: 1 },
+        { propertyIdx: 2, guestName: "Emily Watson", platform: "airbnb", status: "upcoming", dayOffset: 4 },
+        { propertyIdx: 3, guestName: "Michael Torres", platform: "booking_com", status: "upcoming", dayOffset: 3 },
+      ];
+
+      await Promise.all(
+        turnoverSeed.map((t) => {
+          const checkout = new Date(now);
+          checkout.setDate(checkout.getDate() + t.dayOffset);
+          checkout.setHours(11, 0, 0, 0);
+          const checkin = new Date(checkout);
+          checkin.setHours(15, 0, 0, 0);
+
+          return tx.turnover.create({
+            data: {
+              propertyId: properties[t.propertyIdx].id,
+              guestCheckout: checkout,
+              guestCheckin: checkin,
+              guestName: t.guestName,
+              platform: t.platform,
+              status: t.status,
+              autoCreated: true,
+              turnaroundHrs: 4,
+            },
+          });
+        })
+      );
+
+      // ------------------------------------------------------------------
+      // 13. Recurring schedules (3)
+      // ------------------------------------------------------------------
+      await Promise.all([
+        tx.recurringSchedule.create({
+          data: {
+            companyId: company.id,
+            clientId: clients[0].id,
+            serviceId: services[1].id,
+            title: "Bi-weekly gutter cleaning - Chen",
+            frequency: "biweekly",
+            dayOfWeek: "3", // Wednesday
+            preferredTime: "09:00",
+            estimatedDuration: 90,
+            address: clients[0].address,
+            city: clients[0].city,
+            state: clients[0].state,
+            zip: clients[0].zip,
+            totalAmount: 150,
+            startDate: new Date(now.getFullYear(), now.getMonth(), 1),
+            isActive: true,
+          },
+        }),
+        tx.recurringSchedule.create({
+          data: {
+            companyId: company.id,
+            clientId: clients[3].id,
+            serviceId: services[3].id,
+            title: "Weekly lawn care - Whitmore",
+            frequency: "weekly",
+            dayOfWeek: "1", // Monday
+            preferredTime: "08:00",
+            estimatedDuration: 120,
+            address: clients[3].address,
+            city: clients[3].city,
+            state: clients[3].state,
+            zip: clients[3].zip,
+            totalAmount: 200,
+            startDate: new Date(now.getFullYear(), now.getMonth(), 1),
+            isActive: true,
+          },
+        }),
+        tx.recurringSchedule.create({
+          data: {
+            companyId: company.id,
+            clientId: clients[5].id,
+            serviceId: services[4].id,
+            title: "Monthly deep clean - Kim",
+            frequency: "monthly",
+            dayOfMonth: 15,
+            preferredTime: "10:00",
+            estimatedDuration: 150,
+            address: clients[5].address,
+            city: clients[5].city,
+            state: clients[5].state,
+            zip: clients[5].zip,
+            totalAmount: 175,
+            startDate: new Date(now.getFullYear(), now.getMonth(), 1),
+            isActive: true,
+          },
+        }),
+      ]);
     });
 
     return NextResponse.json({

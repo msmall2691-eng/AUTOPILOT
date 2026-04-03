@@ -159,7 +159,7 @@ export default function NewJobPage() {
         }
         if (employeesRes.ok) {
           const data = await employeesRes.json();
-          setEmployees(data.users ?? data.employees ?? data ?? []);
+          setEmployees(data.team ?? data.users ?? data.employees ?? data ?? []);
         }
       } catch (err) {
         console.error("Error fetching lookup data:", err);

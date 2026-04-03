@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { StatsCard } from "@/components/ui/stats-card";
@@ -36,88 +36,53 @@ const DATE_RANGES: { label: string; value: DateRange }[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Mock data
+// Types for API response
 // ---------------------------------------------------------------------------
 
-const STATS = {
-  week: { revenue: 12_480, jobs: 18, newClients: 5, avgJobValue: 693 },
-  month: { revenue: 48_320, jobs: 72, newClients: 19, avgJobValue: 671 },
-  quarter: { revenue: 142_750, jobs: 213, newClients: 54, avgJobValue: 670 },
-  year: { revenue: 524_600, jobs: 812, newClients: 187, avgJobValue: 646 },
-  custom: { revenue: 48_320, jobs: 72, newClients: 19, avgJobValue: 671 },
+interface StatsData {
+  revenue: number;
+  jobs: number;
+  newClients: number;
+  avgJobValue: number;
+}
+
+interface RevenueBar {
+  label: string;
+  value: number;
+}
+
+interface JobStatus {
+  label: string;
+  count: number;
+  color: string;
+}
+
+interface ServiceData {
+  name: string;
+  jobs: number;
+  revenue: number;
+  avgPrice: number;
+}
+
+interface ClientData {
+  name: string;
+  jobs: number;
+  totalSpent: number;
+}
+
+const STATUS_COLOR_MAP: Record<string, string> = {
+  completed: "bg-green-500",
+  in_progress: "bg-blue-500",
+  scheduled: "bg-indigo-500",
+  cancelled: "bg-red-500",
 };
 
-const REVENUE_BARS = {
-  week: [
-    { label: "Mon", value: 1_820 },
-    { label: "Tue", value: 2_340 },
-    { label: "Wed", value: 1_560 },
-    { label: "Thu", value: 2_810 },
-    { label: "Fri", value: 1_950 },
-    { label: "Sat", value: 1_200 },
-    { label: "Sun", value: 800 },
-  ],
-  month: [
-    { label: "Wk 1", value: 11_200 },
-    { label: "Wk 2", value: 13_400 },
-    { label: "Wk 3", value: 10_800 },
-    { label: "Wk 4", value: 12_920 },
-    { label: "Wk 5", value: 0 },
-    { label: "", value: 0 },
-    { label: "", value: 0 },
-  ],
-  quarter: [
-    { label: "Jan", value: 42_300 },
-    { label: "Feb", value: 48_600 },
-    { label: "Mar", value: 51_850 },
-    { label: "", value: 0 },
-    { label: "", value: 0 },
-    { label: "", value: 0 },
-    { label: "", value: 0 },
-  ],
-  year: [
-    { label: "Q1", value: 142_750 },
-    { label: "Q2", value: 128_400 },
-    { label: "Q3", value: 136_200 },
-    { label: "Q4", value: 117_250 },
-    { label: "", value: 0 },
-    { label: "", value: 0 },
-    { label: "", value: 0 },
-  ],
-  custom: [
-    { label: "Wk 1", value: 11_200 },
-    { label: "Wk 2", value: 13_400 },
-    { label: "Wk 3", value: 10_800 },
-    { label: "Wk 4", value: 12_920 },
-    { label: "Wk 5", value: 0 },
-    { label: "", value: 0 },
-    { label: "", value: 0 },
-  ],
-};
+const DEFAULT_STATS: StatsData = { revenue: 0, jobs: 0, newClients: 0, avgJobValue: 0 };
 
-const JOB_STATUSES = [
-  { label: "Completed", count: 42, color: "bg-green-500" },
-  { label: "In Progress", count: 15, color: "bg-blue-500" },
-  { label: "Scheduled", count: 9, color: "bg-indigo-500" },
-  { label: "Pending", count: 4, color: "bg-yellow-500" },
-  { label: "Cancelled", count: 2, color: "bg-red-500" },
-];
-
-const TOP_SERVICES = [
-  { name: "HVAC Repair", jobs: 28, revenue: 18_200, avgPrice: 650 },
-  { name: "Plumbing", jobs: 19, revenue: 11_400, avgPrice: 600 },
-  { name: "Electrical", jobs: 14, revenue: 9_800, avgPrice: 700 },
-  { name: "Landscaping", jobs: 7, revenue: 4_550, avgPrice: 650 },
-  { name: "Painting", jobs: 4, revenue: 4_370, avgPrice: 1_093 },
-];
-
-const TOP_CLIENTS = [
-  { name: "Greenfield Properties", jobs: 12, totalSpent: 14_800 },
-  { name: "Sunrise Apartments", jobs: 9, totalSpent: 11_200 },
-  { name: "Coastal Living HOA", jobs: 8, totalSpent: 8_750 },
-  { name: "Metro Office Park", jobs: 6, totalSpent: 7_400 },
-  { name: "The Parkview Group", jobs: 5, totalSpent: 6_170 },
-];
+function calcChange(current: number, previous: number): number {
+  if (previous === 0) return 0;
+  return Number((((current - previous) / previous) * 100).toFixed(1));
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -125,11 +90,57 @@ const TOP_CLIENTS = [
 
 export default function ReportsPage() {
   const [dateRange, setDateRange] = useState<DateRange>("month");
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<StatsData>(DEFAULT_STATS);
+  const [previousStats, setPreviousStats] = useState<StatsData>(DEFAULT_STATS);
+  const [revenueByPeriod, setRevenueByPeriod] = useState<RevenueBar[]>([]);
+  const [jobStatuses, setJobStatuses] = useState<JobStatus[]>([]);
+  const [topServices, setTopServices] = useState<ServiceData[]>([]);
+  const [topClients, setTopClients] = useState<ClientData[]>([]);
 
-  const stats = STATS[dateRange];
-  const bars = REVENUE_BARS[dateRange].filter((b) => b.label);
+  const fetchReports = useCallback(async (range: DateRange) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/reports?range=${range}`);
+      if (!res.ok) throw new Error("Failed to fetch reports");
+      const data = await res.json();
+
+      setStats(data.stats ?? DEFAULT_STATS);
+      setPreviousStats(data.previousStats ?? DEFAULT_STATS);
+      setRevenueByPeriod(data.revenueByPeriod ?? []);
+      setJobStatuses(
+        (data.jobsByStatus ?? []).map((s: { label: string; count: number; color?: string }) => ({
+          ...s,
+          color: STATUS_COLOR_MAP[s.color ?? ""] ?? s.color ?? "bg-gray-400",
+        }))
+      );
+      setTopServices(data.topServices ?? []);
+      setTopClients(data.topClients ?? []);
+    } catch {
+      // On error, reset to empty/zero state
+      setStats(DEFAULT_STATS);
+      setPreviousStats(DEFAULT_STATS);
+      setRevenueByPeriod([]);
+      setJobStatuses([]);
+      setTopServices([]);
+      setTopClients([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchReports(dateRange);
+  }, [dateRange, fetchReports]);
+
+  const bars = revenueByPeriod.filter((b) => b.label);
   const maxBar = Math.max(...bars.map((b) => b.value), 1);
-  const maxStatus = Math.max(...JOB_STATUSES.map((s) => s.count), 1);
+  const maxStatus = Math.max(...jobStatuses.map((s) => s.count), 1);
+
+  const revenueChange = calcChange(stats.revenue, previousStats.revenue);
+  const jobsChange = calcChange(stats.jobs, previousStats.jobs);
+  const newClientsChange = calcChange(stats.newClients, previousStats.newClients);
+  const avgJobValueChange = calcChange(stats.avgJobValue, previousStats.avgJobValue);
 
   return (
     <div className="space-y-6">
@@ -160,31 +171,38 @@ export default function ReportsPage() {
         ))}
       </div>
 
+      {/* Loading overlay */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-blue-500" />
+        </div>
+      )}
+
       {/* Stats row */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatsCard
           icon={DollarSign}
           label="Revenue"
           value={formatCurrency(stats.revenue)}
-          change={12.5}
+          change={revenueChange}
         />
         <StatsCard
           icon={Briefcase}
           label="Jobs Completed"
           value={stats.jobs}
-          change={8.2}
+          change={jobsChange}
         />
         <StatsCard
           icon={Users}
           label="New Clients"
           value={stats.newClients}
-          change={15.3}
+          change={newClientsChange}
         />
         <StatsCard
           icon={TrendingUp}
           label="Avg Job Value"
           value={formatCurrency(stats.avgJobValue)}
-          change={-2.1}
+          change={avgJobValueChange}
         />
       </div>
 
@@ -223,7 +241,7 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {JOB_STATUSES.map((s) => (
+              {jobStatuses.map((s) => (
                 <div key={s.label} className="space-y-1">
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-medium text-gray-700">{s.label}</span>
@@ -260,7 +278,7 @@ export default function ReportsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {TOP_SERVICES.map((svc) => (
+                {topServices.map((svc) => (
                   <TableRow key={svc.name}>
                     <TableCell className="font-medium text-gray-900">
                       {svc.name}
@@ -294,7 +312,7 @@ export default function ReportsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {TOP_CLIENTS.map((c) => (
+                {topClients.map((c) => (
                   <TableRow key={c.name}>
                     <TableCell className="font-medium text-gray-900">
                       {c.name}

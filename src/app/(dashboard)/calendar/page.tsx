@@ -236,28 +236,32 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  // Fetch jobs
+  // Fetch jobs for the current month view
   useEffect(() => {
     async function fetchJobs() {
       setLoading(true);
       try {
-        const res = await fetch("/api/jobs?limit=100");
+        const monthStart = startOfMonth(currentMonth);
+        const monthEnd = endOfMonth(currentMonth);
+        const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 });
+        const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
+        const dateFrom = format(gridStart, "yyyy-MM-dd");
+        const dateTo = format(gridEnd, "yyyy-MM-dd");
+        const res = await fetch(`/api/jobs?limit=100&dateFrom=${dateFrom}&dateTo=${dateTo}`);
         if (res.ok) {
           const json = await res.json();
           setJobs(json.jobs ?? []);
         } else if (res.status === 401) {
-          // Demo mode: use mock data
           setJobs(getMockJobs());
         }
       } catch {
-        // Fallback to mock data
         setJobs(getMockJobs());
       } finally {
         setLoading(false);
       }
     }
     fetchJobs();
-  }, []);
+  }, [currentMonth]);
 
   // Build calendar days for the current month view
   const calendarDays = useMemo(() => {

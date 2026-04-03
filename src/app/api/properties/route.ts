@@ -58,6 +58,10 @@ export async function GET(request: NextRequest) {
         include: {
           icalFeeds: true,
           checklists: true,
+          turnovers: {
+            orderBy: { guestCheckout: "desc" },
+            take: 5,
+          },
         },
         orderBy: { createdAt: "desc" },
         skip,

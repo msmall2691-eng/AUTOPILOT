@@ -38,8 +38,15 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Calendar", href: "/calendar", icon: Calendar },
-  { label: "Jobs", href: "/jobs", icon: Briefcase },
-  { label: "Dispatch Map", href: "/dispatch-map", icon: Map },
+  {
+    label: "Jobs",
+    href: "/jobs",
+    icon: Briefcase,
+    children: [
+      { label: "Recurring", href: "/jobs/recurring" },
+    ],
+  },
+  { label: "Dispatch", href: "/dispatch", icon: Map },
   { label: "Clients", href: "/clients", icon: Users },
   {
     label: "Properties",
@@ -210,7 +217,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <div className="shrink-0 border-t border-indigo-800 p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-sm font-semibold uppercase">
-              JD
+              {user ? `${user.firstName.charAt(0)}${user.lastName.charAt(0)}` : ".."}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-white">
