@@ -768,27 +768,36 @@ export default function SettingsPage() {
             industry: data.company.industry ?? "hvac",
             timezone: data.company.timezone ?? "America/Chicago",
             brandColor: data.settings?.brandColor ?? "#2563EB",
-            taxRate: data.settings?.taxRate ?? "8.25",
+            taxRate: String(data.settings?.taxRate ?? 0),
             invoicePrefix: data.settings?.invoicePrefix ?? "INV",
             estimatePrefix: data.settings?.estimatePrefix ?? "EST",
-            paymentTerms: data.settings?.defaultPaymentTerms ?? "net_30",
+            paymentTerms: (() => {
+              const terms = data.settings?.defaultPaymentTerms;
+              if (typeof terms === "string") return terms;
+              if (terms === 0) return "due_on_receipt";
+              if (typeof terms === "number") return `net_${terms}`;
+              return "net_30";
+            })(),
           });
         }
 
         if (data.settings) {
           const s = data.settings;
+          // notificationEmail and notificationSms are booleans in the DB
+          const emailEnabled = s.notificationEmail !== false;
+          const smsEnabled = s.notificationSms !== false;
           setNotifications({
-            emailNewJob: s.notificationEmail?.newJob ?? true,
-            emailJobComplete: s.notificationEmail?.jobComplete ?? true,
-            emailInvoicePaid: s.notificationEmail?.invoicePaid ?? true,
-            emailWeeklySummary: s.notificationEmail?.weeklySummary ?? true,
-            smsNewJob: s.notificationSms?.newJob ?? false,
-            smsJobReminder: s.notificationSms?.jobReminder ?? true,
-            smsClientMessage: s.notificationSms?.clientMessage ?? true,
-            jobReminders: s.jobReminders ?? true,
-            jobReminderHours: String(s.jobReminderHours ?? "24"),
-            reviewRequests: s.reviewRequests ?? true,
-            reviewRequestDelay: String(s.reviewRequestDelay ?? "48"),
+            emailNewJob: emailEnabled,
+            emailJobComplete: emailEnabled,
+            emailInvoicePaid: emailEnabled,
+            emailWeeklySummary: emailEnabled,
+            smsNewJob: smsEnabled,
+            smsJobReminder: smsEnabled,
+            smsClientMessage: smsEnabled,
+            jobReminders: s.sendJobReminders ?? true,
+            jobReminderHours: String(s.reminderHoursBefore ?? 24),
+            reviewRequests: s.autoRequestReviews ?? true,
+            reviewRequestDelay: String(s.reviewDelayHours ?? 48),
           });
         }
       } catch {
