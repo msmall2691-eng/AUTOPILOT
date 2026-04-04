@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSession, hashPassword } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
-import { prisma } from "@/lib/db";
+import { prisma, schemaReady } from "@/lib/db";
 import crypto from "crypto";
 
 export async function GET(request: NextRequest) {

@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { prisma, schemaReady } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {

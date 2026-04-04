@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { prisma, schemaReady } from "@/lib/db";
 import { generateTrackingNumber } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -10,6 +10,7 @@ import { generateTrackingNumber } from "@/lib/utils";
 // ---------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
   try {
+    await schemaReady;
     const cookieStore = await cookies();
     const session = await getSession(cookieStore);
 

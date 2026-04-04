@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
-import { prisma } from "@/lib/db";
+import { prisma, schemaReady } from "@/lib/db";
 
 export async function GET() {
   try {
+    await schemaReady;
     const cookieStore = await cookies();
     const session = await getSession(cookieStore);
 
