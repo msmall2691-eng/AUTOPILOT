@@ -3,7 +3,7 @@
  * This runs raw ALTER TABLE statements that are idempotent (IF NOT EXISTS).
  * Used as a fallback when prisma db push fails to sync the schema.
  */
-import { PrismaClient } from "@prisma/client";
+const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 
