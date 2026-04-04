@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 
@@ -7,10 +9,20 @@ type Tx = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
 
 // ============================================================================
 // GET /api/seed — Populate the database with realistic demo data
+// Requires owner authentication
 // ============================================================================
 
 export async function GET() {
   try {
+    // Require authentication — only owners can seed data
+    const cookieStore = await cookies();
+    const session = await getSession(cookieStore);
+    if (!session || session.role !== "owner") {
+      return NextResponse.json(
+        { error: "Unauthorized — only owners can seed data" },
+        { status: 403 }
+      );
+    }
     // Idempotency check: bail out if data already exists
     const existingUser = await prisma.user.findUnique({
       where: { email: "demo@autopilot.io" },

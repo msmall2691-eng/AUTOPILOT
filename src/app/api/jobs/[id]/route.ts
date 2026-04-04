@@ -154,7 +154,7 @@ export async function PATCH(
     }
 
     const job = await prisma.job.update({
-      where: { id },
+      where: { id, companyId },
       data,
       include: {
         client: {
@@ -236,7 +236,7 @@ export async function DELETE(
     // Delete time entries first (no cascade), then the job (lineItems cascade-delete)
     await prisma.$transaction([
       prisma.timeEntry.deleteMany({ where: { jobId: id } }),
-      prisma.job.delete({ where: { id } }),
+      prisma.job.delete({ where: { id, companyId } }),
     ]);
 
     return NextResponse.json({ success: true });

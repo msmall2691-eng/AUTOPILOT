@@ -2,7 +2,9 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSession, hashPassword } from "@/lib/auth";
+import { requireRole } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
+import crypto from "crypto";
 
 export async function GET(request: NextRequest) {
   try {
@@ -111,10 +113,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Only admin/owner can add team members
+    const denied = requireRole(session, "admin");
+    if (denied) return denied;
+
     const companyId = session.companyId;
     const body = await request.json();
 
     const { firstName, lastName, email, role, phone } = body;
+
+    // Prevent creating users with higher role than yourself
+    const roleHierarchy: Record<string, number> = { subcontractor: 0, employee: 1, admin: 2, owner: 3 };
+    if ((roleHierarchy[role] ?? 0) > (roleHierarchy[session.role] ?? 0)) {
+      return NextResponse.json(
+        { error: "Cannot create a user with a higher role than your own" },
+        { status: 403 }
+      );
+    }
 
     if (!firstName || !firstName.trim()) {
       return NextResponse.json(
@@ -155,7 +170,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const passwordHash = await hashPassword("changeme123");
+    // Generate a random temporary password
+    const tempPassword = crypto.randomBytes(12).toString("base64url");
+    const passwordHash = await hashPassword(tempPassword);
 
     const user = await prisma.user.create({
       data: {
@@ -210,6 +227,10 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
+    // Only admin/owner can update team members
+    const denied = requireRole(session, "admin");
+    if (denied) return denied;
+
     const companyId = session.companyId;
     const body = await request.json();
 
@@ -231,6 +252,24 @@ export async function PATCH(request: NextRequest) {
         { error: "User not found" },
         { status: 404 }
       );
+    }
+
+    // Prevent role escalation
+    if (role !== undefined) {
+      const roleHierarchy: Record<string, number> = { subcontractor: 0, employee: 1, admin: 2, owner: 3 };
+      if ((roleHierarchy[role] ?? 0) > (roleHierarchy[session.role] ?? 0)) {
+        return NextResponse.json(
+          { error: "Cannot assign a role higher than your own" },
+          { status: 403 }
+        );
+      }
+      // Only owners can modify other owners
+      if (existingUser.role === "owner" && session.role !== "owner") {
+        return NextResponse.json(
+          { error: "Only owners can modify owner accounts" },
+          { status: 403 }
+        );
+      }
     }
 
     const data: Record<string, unknown> = {};
@@ -288,6 +327,10 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // Only admin/owner can deactivate team members
+    const denied = requireRole(session, "admin");
+    if (denied) return denied;
+
     const companyId = session.companyId;
     const body = await request.json();
 
@@ -300,6 +343,14 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // Cannot deactivate yourself
+    if (userId === session.id) {
+      return NextResponse.json(
+        { error: "You cannot deactivate your own account" },
+        { status: 400 }
+      );
+    }
+
     const existingUser = await prisma.user.findUnique({
       where: { id: userId },
     });
@@ -308,6 +359,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json(
         { error: "User not found" },
         { status: 404 }
+      );
+    }
+
+    // Only owners can deactivate other owners/admins
+    if (existingUser.role === "owner" && session.role !== "owner") {
+      return NextResponse.json(
+        { error: "Only owners can deactivate owner accounts" },
+        { status: 403 }
       );
     }
 

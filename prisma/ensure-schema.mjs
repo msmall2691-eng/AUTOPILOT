@@ -146,6 +146,81 @@ const migrations = [
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Notification_pkey" PRIMARY KEY ("id")
   )`,
+
+  // Job.completedAt column
+  `ALTER TABLE "Job" ADD COLUMN IF NOT EXISTS "completedAt" TIMESTAMP(3)`,
+];
+
+// Indexes to create (idempotent via IF NOT EXISTS)
+const indexes = [
+  // User
+  `CREATE INDEX IF NOT EXISTS "User_companyId_idx" ON "User"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "User_role_idx" ON "User"("role")`,
+  `CREATE INDEX IF NOT EXISTS "User_isActive_idx" ON "User"("isActive")`,
+  // Client
+  `CREATE INDEX IF NOT EXISTS "Client_companyId_idx" ON "Client"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "Client_companyId_status_idx" ON "Client"("companyId", "status")`,
+  `CREATE INDEX IF NOT EXISTS "Client_companyId_email_idx" ON "Client"("companyId", "email")`,
+  `CREATE INDEX IF NOT EXISTS "Client_createdAt_idx" ON "Client"("createdAt")`,
+  // Job
+  `CREATE INDEX IF NOT EXISTS "Job_companyId_idx" ON "Job"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "Job_companyId_status_idx" ON "Job"("companyId", "status")`,
+  `CREATE INDEX IF NOT EXISTS "Job_companyId_scheduledDate_idx" ON "Job"("companyId", "scheduledDate")`,
+  `CREATE INDEX IF NOT EXISTS "Job_clientId_idx" ON "Job"("clientId")`,
+  `CREATE INDEX IF NOT EXISTS "Job_assignedToId_idx" ON "Job"("assignedToId")`,
+  `CREATE INDEX IF NOT EXISTS "Job_createdById_idx" ON "Job"("createdById")`,
+  `CREATE INDEX IF NOT EXISTS "Job_recurringScheduleId_idx" ON "Job"("recurringScheduleId")`,
+  // Invoice
+  `CREATE INDEX IF NOT EXISTS "Invoice_companyId_idx" ON "Invoice"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "Invoice_companyId_status_idx" ON "Invoice"("companyId", "status")`,
+  `CREATE INDEX IF NOT EXISTS "Invoice_clientId_idx" ON "Invoice"("clientId")`,
+  `CREATE INDEX IF NOT EXISTS "Invoice_createdById_idx" ON "Invoice"("createdById")`,
+  `CREATE INDEX IF NOT EXISTS "Invoice_dueDate_idx" ON "Invoice"("dueDate")`,
+  // Estimate
+  `CREATE INDEX IF NOT EXISTS "Estimate_companyId_idx" ON "Estimate"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "Estimate_companyId_status_idx" ON "Estimate"("companyId", "status")`,
+  `CREATE INDEX IF NOT EXISTS "Estimate_clientId_idx" ON "Estimate"("clientId")`,
+  `CREATE INDEX IF NOT EXISTS "Estimate_createdById_idx" ON "Estimate"("createdById")`,
+  // Service
+  `CREATE INDEX IF NOT EXISTS "Service_companyId_idx" ON "Service"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "Service_companyId_isActive_idx" ON "Service"("companyId", "isActive")`,
+  // RecurringSchedule
+  `CREATE INDEX IF NOT EXISTS "RecurringSchedule_companyId_idx" ON "RecurringSchedule"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "RecurringSchedule_companyId_isActive_idx" ON "RecurringSchedule"("companyId", "isActive")`,
+  `CREATE INDEX IF NOT EXISTS "RecurringSchedule_clientId_idx" ON "RecurringSchedule"("clientId")`,
+  // Communication
+  `CREATE INDEX IF NOT EXISTS "CallLog_companyId_idx" ON "CallLog"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "CallLog_clientId_idx" ON "CallLog"("clientId")`,
+  `CREATE INDEX IF NOT EXISTS "Message_companyId_idx" ON "Message"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "Message_clientId_idx" ON "Message"("clientId")`,
+  `CREATE INDEX IF NOT EXISTS "Message_read_idx" ON "Message"("read")`,
+  // Notification
+  `CREATE INDEX IF NOT EXISTS "Notification_userId_idx" ON "Notification"("userId")`,
+  `CREATE INDEX IF NOT EXISTS "Notification_userId_isRead_idx" ON "Notification"("userId", "isRead")`,
+  // Other
+  `CREATE INDEX IF NOT EXISTS "JobLineItem_jobId_idx" ON "JobLineItem"("jobId")`,
+  `CREATE INDEX IF NOT EXISTS "InvoiceLineItem_invoiceId_idx" ON "InvoiceLineItem"("invoiceId")`,
+  `CREATE INDEX IF NOT EXISTS "EstimateLineItem_estimateId_idx" ON "EstimateLineItem"("estimateId")`,
+  `CREATE INDEX IF NOT EXISTS "TimeEntry_userId_idx" ON "TimeEntry"("userId")`,
+  `CREATE INDEX IF NOT EXISTS "TimeEntry_jobId_idx" ON "TimeEntry"("jobId")`,
+  `CREATE INDEX IF NOT EXISTS "Payment_invoiceId_idx" ON "Payment"("invoiceId")`,
+  `CREATE INDEX IF NOT EXISTS "Property_companyId_idx" ON "Property"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "Turnover_propertyId_idx" ON "Turnover"("propertyId")`,
+  `CREATE INDEX IF NOT EXISTS "Turnover_status_idx" ON "Turnover"("status")`,
+  `CREATE INDEX IF NOT EXISTS "Campaign_companyId_idx" ON "Campaign"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "Sequence_companyId_idx" ON "Sequence"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "BookingPage_companyId_idx" ON "BookingPage"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "Booking_bookingPageId_idx" ON "Booking"("bookingPageId")`,
+  `CREATE INDEX IF NOT EXISTS "ReviewRequest_companyId_idx" ON "ReviewRequest"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "AdTracker_companyId_idx" ON "AdTracker"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "PriceBookItem_companyId_idx" ON "PriceBookItem"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "PhoneNumber_companyId_idx" ON "PhoneNumber"("companyId")`,
+  `CREATE INDEX IF NOT EXISTS "UserAvailability_userId_idx" ON "UserAvailability"("userId")`,
+  `CREATE INDEX IF NOT EXISTS "TimeOffRequest_userId_idx" ON "TimeOffRequest"("userId")`,
+  `CREATE INDEX IF NOT EXISTS "SequenceStep_sequenceId_idx" ON "SequenceStep"("sequenceId")`,
+  `CREATE INDEX IF NOT EXISTS "ICalFeed_propertyId_idx" ON "ICalFeed"("propertyId")`,
+  `CREATE INDEX IF NOT EXISTS "PropertyChecklist_propertyId_idx" ON "PropertyChecklist"("propertyId")`,
+  `CREATE INDEX IF NOT EXISTS "ChecklistItem_checklistId_idx" ON "ChecklistItem"("checklistId")`,
 ];
 
 async function main() {
@@ -158,7 +233,6 @@ async function main() {
       await prisma.$executeRawUnsafe(sql);
       applied++;
     } catch (e) {
-      // Column/table already exists or other non-critical error
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("already exists")) {
         skipped++;
@@ -169,7 +243,27 @@ async function main() {
     }
   }
 
-  console.log(`Schema sync complete: ${applied} applied, ${skipped} skipped`);
+  console.log(`Schema sync: ${applied} migrations applied, ${skipped} skipped`);
+
+  // Apply indexes
+  let idxApplied = 0;
+  let idxSkipped = 0;
+  for (const sql of indexes) {
+    try {
+      await prisma.$executeRawUnsafe(sql);
+      idxApplied++;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("already exists")) {
+        idxSkipped++;
+      } else {
+        console.warn(`Index warning: ${msg.slice(0, 120)}`);
+        idxSkipped++;
+      }
+    }
+  }
+
+  console.log(`Index sync: ${idxApplied} indexes applied, ${idxSkipped} skipped`);
 }
 
 main()

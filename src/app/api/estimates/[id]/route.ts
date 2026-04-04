@@ -139,7 +139,7 @@ export async function PATCH(
     }
 
     const estimate = await prisma.estimate.update({
-      where: { id },
+      where: { id, companyId },
       data,
       include: {
         client: {
@@ -359,7 +359,7 @@ export async function DELETE(
     }
 
     // Line items cascade-delete automatically
-    await prisma.estimate.delete({ where: { id } });
+    await prisma.estimate.delete({ where: { id, companyId } });
 
     return NextResponse.json({ success: true });
   } catch (error) {

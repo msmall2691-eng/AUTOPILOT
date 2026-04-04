@@ -156,7 +156,7 @@ export async function PATCH(
     }
 
     const client = await prisma.client.update({
-      where: { id },
+      where: { id, companyId },
       data,
     });
 
@@ -224,7 +224,7 @@ export async function DELETE(
       );
     }
 
-    await prisma.client.delete({ where: { id } });
+    await prisma.client.delete({ where: { id, companyId } });
 
     return NextResponse.json({ success: true });
   } catch (error) {

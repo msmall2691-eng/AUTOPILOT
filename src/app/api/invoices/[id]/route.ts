@@ -142,7 +142,7 @@ export async function PATCH(
     }
 
     const invoice = await prisma.invoice.update({
-      where: { id },
+      where: { id, companyId },
       data,
       include: {
         client: {
@@ -215,7 +215,7 @@ export async function DELETE(
     }
 
     // Line items cascade-delete automatically
-    await prisma.invoice.delete({ where: { id } });
+    await prisma.invoice.delete({ where: { id, companyId } });
 
     return NextResponse.json({ success: true });
   } catch (error) {

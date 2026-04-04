@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSession } from "@/lib/auth";
+import { requireRole } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 
 export async function GET() {
@@ -74,6 +75,10 @@ export async function PUT(request: NextRequest) {
         { status: 401 }
       );
     }
+
+    // Only admin/owner can update settings
+    const denied = requireRole(session, "admin");
+    if (denied) return denied;
 
     const companyId = session.companyId;
     const body = await request.json();
