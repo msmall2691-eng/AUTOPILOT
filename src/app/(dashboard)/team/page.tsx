@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -36,71 +36,39 @@ interface TeamMember {
 }
 
 // ---------------------------------------------------------------------------
-// Mock data
+// API response type
 // ---------------------------------------------------------------------------
 
-const INITIAL_MEMBERS: TeamMember[] = [
-  {
-    id: "1",
-    firstName: "Marcus",
-    lastName: "Rivera",
-    email: "marcus@autopilot.io",
-    phone: "5551234567",
-    role: "employee",
-    status: "online",
-    jobsCompleted: 87,
-    hoursThisWeek: 38,
-    revenueGenerated: 24_350,
-  },
-  {
-    id: "2",
-    firstName: "Sarah",
-    lastName: "Chen",
-    email: "sarah@autopilot.io",
-    phone: "5559876543",
-    role: "employee",
-    status: "online",
-    jobsCompleted: 64,
-    hoursThisWeek: 32,
-    revenueGenerated: 18_720,
-  },
-  {
-    id: "3",
-    firstName: "James",
-    lastName: "Okafor",
-    email: "james.okafor@email.com",
-    phone: "5554567890",
-    role: "subcontractor",
+interface ApiUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  role: string;
+  isActive: boolean;
+  color: string | null;
+  createdAt: string;
+  jobStats?: {
+    completedCount?: number;
+    totalAmount?: number;
+  };
+}
+
+function mapApiUserToMember(user: ApiUser): TeamMember {
+  return {
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    phone: user.phone ?? "",
+    role: (user.role === "subcontractor" ? "subcontractor" : "employee") as "employee" | "subcontractor",
     status: "offline",
-    jobsCompleted: 42,
+    jobsCompleted: user.jobStats?.completedCount ?? 0,
     hoursThisWeek: 0,
-    revenueGenerated: 12_800,
-  },
-  {
-    id: "4",
-    firstName: "Emily",
-    lastName: "Nguyen",
-    email: "emily.nguyen@email.com",
-    phone: "5553216549",
-    role: "subcontractor",
-    status: "online",
-    jobsCompleted: 29,
-    hoursThisWeek: 18,
-    revenueGenerated: 9_450,
-  },
-  {
-    id: "5",
-    firstName: "David",
-    lastName: "Kowalski",
-    email: "david.k@autopilot.io",
-    phone: "5558527413",
-    role: "employee",
-    status: "offline",
-    jobsCompleted: 53,
-    hoursThisWeek: 0,
-    revenueGenerated: 15_200,
-  },
-];
+    revenueGenerated: user.jobStats?.totalAmount ?? 0,
+  };
+}
 
 const ROLE_FILTERS = [
   { label: "All", value: "all" },
@@ -133,7 +101,8 @@ function formatPhone(phone: string) {
 // ---------------------------------------------------------------------------
 
 export default function TeamPage() {
-  const [members, setMembers] = useState<TeamMember[]>(INITIAL_MEMBERS);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [loading, setLoading] = useState(true);
   const [roleFilter, setRoleFilter] = useState("all");
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -146,36 +115,71 @@ export default function TeamPage() {
     role: "employee" as "employee" | "subcontractor",
   });
 
+  const fetchMembers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/team");
+      if (!res.ok) throw new Error("Failed to fetch team members");
+      const data = await res.json();
+      setMembers((data.team ?? data.users ?? []).map(mapApiUserToMember));
+    } catch (err) {
+      console.error("Error fetching team members:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMembers();
+  }, [fetchMembers]);
+
   const filteredMembers =
     roleFilter === "all"
       ? members
       : members.filter((m) => m.role === roleFilter);
 
-  const handleAddMember = () => {
+  const handleAddMember = async () => {
     if (!form.firstName.trim() || !form.lastName.trim() || !form.email.trim()) {
       return;
     }
 
-    const newMember: TeamMember = {
-      id: String(Date.now()),
-      firstName: form.firstName.trim(),
-      lastName: form.lastName.trim(),
-      email: form.email.trim(),
-      phone: form.phone.trim(),
-      role: form.role,
-      status: "offline",
-      jobsCompleted: 0,
-      hoursThisWeek: 0,
-      revenueGenerated: 0,
-    };
+    try {
+      const res = await fetch("/api/team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: form.firstName.trim(),
+          lastName: form.lastName.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim(),
+          role: form.role,
+        }),
+      });
 
-    setMembers((prev) => [...prev, newMember]);
-    setForm({ firstName: "", lastName: "", email: "", phone: "", role: "employee" });
-    setModalOpen(false);
+      if (!res.ok) throw new Error("Failed to add team member");
+
+      const data = await res.json();
+      setMembers((prev) => [...prev, mapApiUserToMember(data.user ?? data)]);
+      setForm({ firstName: "", lastName: "", email: "", phone: "", role: "employee" });
+      setModalOpen(false);
+    } catch (err) {
+      console.error("Error adding team member:", err);
+    }
   };
 
-  const handleRemove = (id: string) => {
-    setMembers((prev) => prev.filter((m) => m.id !== id));
+  const handleRemove = async (id: string) => {
+    try {
+      const res = await fetch("/api/team", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: id }),
+      });
+
+      if (!res.ok) throw new Error("Failed to remove team member");
+
+      setMembers((prev) => prev.filter((m) => m.id !== id));
+    } catch (err) {
+      console.error("Error removing team member:", err);
+    }
   };
 
   return (
@@ -207,8 +211,15 @@ export default function TeamPage() {
         ))}
       </div>
 
+      {/* Loading state */}
+      {loading && (
+        <div className="flex items-center justify-center py-16">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" />
+        </div>
+      )}
+
       {/* Member cards grid */}
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {!loading && <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {filteredMembers.map((member) => (
           <div
             key={member.id}
@@ -294,9 +305,9 @@ export default function TeamPage() {
             </div>
           </div>
         ))}
-      </div>
+      </div>}
 
-      {filteredMembers.length === 0 && (
+      {!loading && filteredMembers.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-16 text-center">
           <p className="text-sm font-medium text-gray-900">No team members found</p>
           <p className="mt-1 text-sm text-gray-500">

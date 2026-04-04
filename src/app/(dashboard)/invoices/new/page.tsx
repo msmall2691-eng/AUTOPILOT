@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,16 +35,28 @@ function createLineItem(): LineItem {
 }
 
 export default function NewInvoicePage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-24"><div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" /></div>}>
+      <NewInvoiceForm />
+    </Suspense>
+  );
+}
+
+function NewInvoiceForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const jobIdParam = searchParams.get("jobId");
 
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [clientId, setClientId] = useState("");
+  const [jobId, setJobId] = useState<string | null>(null);
   const [dueDate, setDueDate] = useState("");
   const [lineItems, setLineItems] = useState<LineItem[]>([createLineItem()]);
   const [taxRate, setTaxRate] = useState(0);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [jobTitle, setJobTitle] = useState<string | null>(null);
 
   const fetchClients = useCallback(async () => {
     try {
@@ -60,6 +72,37 @@ export default function NewInvoicePage() {
   useEffect(() => {
     fetchClients();
   }, [fetchClients]);
+
+  // Pre-fill from job if jobId query param is present
+  useEffect(() => {
+    if (!jobIdParam) return;
+    async function fetchJob() {
+      try {
+        const res = await fetch(`/api/jobs/${jobIdParam}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const job = data.job;
+        setJobId(job.id);
+        setJobTitle(job.title);
+        setClientId(job.clientId || job.client?.id || "");
+        if (job.lineItems && job.lineItems.length > 0) {
+          setLineItems(
+            job.lineItems.map((item: { name: string; description?: string; quantity: number; unitPrice: number }) => ({
+              key: crypto.randomUUID(),
+              name: item.name,
+              description: item.description || "",
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+            }))
+          );
+        }
+        if (job.notes) setNotes(job.notes);
+      } catch {
+        // silently fail
+      }
+    }
+    fetchJob();
+  }, [jobIdParam]);
 
   // Auto-calculations
   const subtotal = useMemo(
@@ -122,6 +165,7 @@ export default function NewInvoicePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientId,
+          jobId: jobId || undefined,
           dueDate: dueDate || null,
           taxRate,
           notes: notes || null,
@@ -165,6 +209,12 @@ export default function NewInvoicePage() {
           </p>
         </div>
       </div>
+
+      {jobTitle && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+          Creating invoice from job: <strong>{jobTitle}</strong>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

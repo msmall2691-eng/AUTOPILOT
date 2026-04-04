@@ -105,7 +105,8 @@ export default function NewClientPage() {
         return;
       }
 
-      router.push("/clients");
+      const data = await res.json();
+      router.push(`/clients/${data.client.id}`);
     } catch {
       setErrors({ general: "An unexpected error occurred. Please try again." });
     } finally {

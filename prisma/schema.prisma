@@ -18,6 +18,8 @@ model User {
   phone         String?
   role          String   @default("owner") // owner, admin, employee, subcontractor
   avatar        String?
+  color         String?  // Calendar color for this team member
+  isActive      Boolean  @default(true)
   companyId     String?
   company       Company? @relation(fields: [companyId], references: [id])
   createdAt     DateTime @default(now())
@@ -31,6 +33,12 @@ model User {
   messages      Message[]
   notifications Notification[]
   timeEntries   TimeEntry[]
+  availability  UserAvailability[]
+  timeOffRequests TimeOffRequest[]
+
+  @@index([companyId])
+  @@index([role])
+  @@index([isActive])
 }
 
 model Company {
@@ -66,6 +74,10 @@ model Company {
   adTrackers   AdTracker[]
   properties   Property[]
   settings     CompanySettings?
+  recurringSchedules RecurringSchedule[]
+  callLogs     CallLog[]
+  messages     Message[]
+  reviewRequests ReviewRequest[]
 }
 
 model CompanySettings {
@@ -84,6 +96,15 @@ model CompanySettings {
   notificationEmail     Boolean @default(true)
   notificationSms       Boolean @default(true)
   brandColor            String  @default("#2563eb")
+  // Business hours
+  businessHoursStart    String  @default("08:00")
+  businessHoursEnd      String  @default("17:00")
+  workDays              String  @default("1,2,3,4,5") // comma-separated day numbers (0=Sun, 6=Sat)
+  // Scheduling
+  defaultJobDuration    Int     @default(60) // minutes
+  bufferTimeBetweenJobs Int     @default(15) // minutes
+  allowWeekendBooking   Boolean @default(false)
+  maxAdvanceBookingDays Int     @default(60)
 }
 
 // ============ CRM ============
@@ -117,6 +138,12 @@ model Client {
   callLogs    CallLog[]
   messages    Message[]
   properties  Property[]
+  recurringSchedules RecurringSchedule[]
+
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([companyId, email])
+  @@index([createdAt])
 }
 
 // ============ JOBS & SCHEDULING ============
@@ -133,6 +160,10 @@ model Service {
 
   jobs        Job[]
   priceItems  PriceBookItem[]
+  recurringSchedules RecurringSchedule[]
+
+  @@index([companyId])
+  @@index([companyId, isActive])
 }
 
 model PriceBookItem {
@@ -146,6 +177,8 @@ model PriceBookItem {
   unit        String   @default("each") // each, hour, cubic_yard, load, etc.
   price       Float
   isActive    Boolean  @default(true)
+
+  @@index([companyId])
 }
 
 model Job {
@@ -160,12 +193,15 @@ model Job {
   assignedTo      User?    @relation("AssignedEmployee", fields: [assignedToId], references: [id])
   createdById     String
   createdBy       User     @relation("CreatedBy", fields: [createdById], references: [id])
+  recurringScheduleId String?
+  recurringSchedule   RecurringSchedule? @relation(fields: [recurringScheduleId], references: [id])
   title           String
   description     String?
   status          String   @default("scheduled") // scheduled, in_progress, completed, cancelled
   priority        String   @default("normal") // low, normal, high, urgent
   scheduledDate   DateTime
   scheduledTime   String?
+  scheduledEndTime String?
   estimatedDuration Int?   // minutes
   actualDuration  Int?
   address         String?
@@ -180,6 +216,8 @@ model Job {
   beforePhotos    String?  // JSON array of URLs
   afterPhotos     String?  // JSON array of URLs
   trackingNumber  String?  @unique
+  isRecurring     Boolean  @default(false)
+  completedAt     DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -187,6 +225,14 @@ model Job {
   invoice         Invoice?
   timeEntries     TimeEntry[]
   turnover        Turnover?
+
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([companyId, scheduledDate])
+  @@index([clientId])
+  @@index([assignedToId])
+  @@index([createdById])
+  @@index([recurringScheduleId])
 }
 
 model JobLineItem {
@@ -198,6 +244,8 @@ model JobLineItem {
   quantity    Float  @default(1)
   unitPrice   Float
   total       Float
+
+  @@index([jobId])
 }
 
 model TimeEntry {
@@ -210,6 +258,76 @@ model TimeEntry {
   clockOut  DateTime?
   duration  Int?     // minutes
   notes     String?
+
+  @@index([userId])
+  @@index([jobId])
+}
+
+// ============ RECURRING SCHEDULING ============
+
+model RecurringSchedule {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  clientId        String
+  client          Client   @relation(fields: [clientId], references: [id])
+  serviceId       String?
+  service         Service? @relation(fields: [serviceId], references: [id])
+  title           String
+  description     String?
+  frequency       String   // once, weekly, biweekly, monthly, custom
+  interval        Int      @default(1) // every N weeks/months
+  dayOfWeek       String?  // comma-separated: 0=Sun, 1=Mon, etc.
+  dayOfMonth      Int?     // for monthly
+  preferredTime   String?  // e.g. "09:00"
+  estimatedDuration Int?   // minutes
+  address         String?
+  city            String?
+  state           String?
+  zip             String?
+  totalAmount     Float    @default(0)
+  assignedToId    String?
+  startDate       DateTime
+  endDate         DateTime?
+  isActive        Boolean  @default(true)
+  lastGeneratedDate DateTime?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  jobs            Job[]
+
+  @@index([companyId])
+  @@index([companyId, isActive])
+  @@index([clientId])
+}
+
+// ============ TEAM AVAILABILITY ============
+
+model UserAvailability {
+  id          String @id @default(cuid())
+  userId      String
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int    // 0=Sunday, 6=Saturday
+  startTime   String // "08:00"
+  endTime     String // "17:00"
+  isAvailable Boolean @default(true)
+
+  @@index([userId])
+}
+
+model TimeOffRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startDate   DateTime
+  endDate     DateTime
+  reason      String?
+  status      String   @default("pending") // pending, approved, denied
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([startDate, endDate])
 }
 
 // ============ INVOICING & PAYMENTS ============
@@ -243,6 +361,13 @@ model Invoice {
 
   lineItems     InvoiceLineItem[]
   payments      Payment[]
+
+  @@unique([companyId, invoiceNumber])
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([clientId])
+  @@index([createdById])
+  @@index([dueDate])
 }
 
 model InvoiceLineItem {
@@ -254,6 +379,8 @@ model InvoiceLineItem {
   quantity    Float   @default(1)
   unitPrice   Float
   total       Float
+
+  @@index([invoiceId])
 }
 
 model Payment {
@@ -265,6 +392,8 @@ model Payment {
   stripePaymentId String?
   notes         String?
   createdAt     DateTime @default(now())
+
+  @@index([invoiceId])
 }
 
 // ============ ESTIMATES ============
@@ -291,6 +420,12 @@ model Estimate {
   updatedAt      DateTime @updatedAt
 
   lineItems      EstimateLineItem[]
+
+  @@unique([companyId, estimateNumber])
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([clientId])
+  @@index([createdById])
 }
 
 model EstimateLineItem {
@@ -302,6 +437,8 @@ model EstimateLineItem {
   quantity    Float    @default(1)
   unitPrice   Float
   total       Float
+
+  @@index([estimateId])
 }
 
 // ============ COMMUNICATION ============
@@ -314,10 +451,14 @@ model PhoneNumber {
   label       String?
   isDefault   Boolean  @default(false)
   createdAt   DateTime @default(now())
+
+  @@index([companyId])
 }
 
 model CallLog {
   id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
   userId      String?
   user        User?    @relation(fields: [userId], references: [id])
   clientId    String?
@@ -331,10 +472,16 @@ model CallLog {
   transcript  String?
   notes       String?
   createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([companyId, createdAt])
+  @@index([clientId])
 }
 
 model Message {
   id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
   userId      String?
   user        User?    @relation(fields: [userId], references: [id])
   clientId    String?
@@ -346,7 +493,13 @@ model Message {
   subject     String?
   body        String
   status      String   @default("sent") // sent, delivered, failed, received
+  read        Boolean  @default(false)
   createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([companyId, createdAt])
+  @@index([clientId])
+  @@index([read])
 }
 
 model Notification {
@@ -359,6 +512,9 @@ model Notification {
   isRead    Boolean  @default(false)
   link      String?
   createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, isRead])
 }
 
 // ============ MARKETING ============
@@ -378,6 +534,9 @@ model Campaign {
   sentAt      DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyId, status])
 }
 
 model Sequence {
@@ -392,6 +551,8 @@ model Sequence {
   updatedAt   DateTime @updatedAt
 
   steps       SequenceStep[]
+
+  @@index([companyId])
 }
 
 model SequenceStep {
@@ -403,10 +564,14 @@ model SequenceStep {
   delayHours  Int?
   content     String?
   subject     String?
+
+  @@index([sequenceId])
 }
 
 model ReviewRequest {
   id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
   clientName  String
   clientEmail String?
   clientPhone String?
@@ -417,6 +582,8 @@ model ReviewRequest {
   aiResponse  String?
   sentAt      DateTime @default(now())
   reviewedAt  DateTime?
+
+  @@index([companyId])
 }
 
 // ============ ONLINE BOOKING ============
@@ -432,6 +599,8 @@ model BookingPage {
   createdAt   DateTime @default(now())
 
   bookings    Booking[]
+
+  @@index([companyId])
 }
 
 model Booking {
@@ -445,9 +614,13 @@ model Booking {
   serviceType     String?
   preferredDate   DateTime
   preferredTime   String?
+  frequency       String?    @default("once") // once, weekly, biweekly, monthly
   notes           String?
   status          String      @default("pending") // pending, confirmed, cancelled
   createdAt       DateTime    @default(now())
+
+  @@index([bookingPageId])
+  @@index([status])
 }
 
 // ============ SHORT-TERM RENTAL MANAGEMENT ============
@@ -490,6 +663,10 @@ model Property {
   icalFeeds     ICalFeed[]
   checklists    PropertyChecklist[]
   turnovers     Turnover[]
+
+  @@index([companyId])
+  @@index([companyId, isActive])
+  @@index([clientId])
 }
 
 model ICalFeed {
@@ -503,6 +680,8 @@ model ICalFeed {
   syncError     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@index([propertyId])
 }
 
 model PropertyChecklist {
@@ -515,6 +694,8 @@ model PropertyChecklist {
   createdAt     DateTime @default(now())
 
   items         ChecklistItem[]
+
+  @@index([propertyId])
 }
 
 model ChecklistItem {
@@ -526,6 +707,8 @@ model ChecklistItem {
   category      String?  // bedroom, bathroom, kitchen, living_area, exterior, supplies
   isRequired    Boolean  @default(true)
   notes         String?
+
+  @@index([checklistId])
 }
 
 model Turnover {
@@ -544,6 +727,10 @@ model Turnover {
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@index([propertyId])
+  @@index([status])
+  @@index([guestCheckout])
 }
 
 // ============ AD TRACKING ============
@@ -561,4 +748,7 @@ model AdTracker {
   revenue     Float    @default(0)
   date        DateTime
   createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([companyId, date])
 }

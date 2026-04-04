@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   DollarSign,
   Briefcase,
@@ -12,6 +13,8 @@ import {
   CreditCard,
   Send,
   PlusCircle,
+  TrendingUp,
+  Target,
 } from "lucide-react";
 import { StatsCard } from "@/components/ui/stats-card";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -31,24 +34,44 @@ interface DashboardStats {
   pendingInvoicesChange: number;
 }
 
+interface Conversions {
+  totalClients: number;
+  totalJobs: number;
+  completedJobs: number;
+  jobCompletionRate: number;
+  totalEstimates: number;
+  acceptedEstimates: number;
+  estimateConversionRate: number;
+}
+
+interface RevenueDay {
+  label: string;
+  value: number;
+  date: string;
+}
+
 interface UpcomingJob {
   id: string;
   title: string;
   scheduledDate: string;
+  scheduledTime: string | null;
   status: string;
   clientName: string;
   serviceName: string | null;
+  assignedTo: string | null;
 }
 
 interface ActivityItem {
   id: string;
-  type: "job_created" | "job_completed" | "invoice_sent" | "client_added" | "payment_received";
+  type: string;
   description: string;
   timestamp: string;
 }
 
 interface DashboardData {
   stats: DashboardStats;
+  conversions: Conversions;
+  revenueChart: RevenueDay[];
   upcomingJobs: UpcomingJob[];
   recentActivity: ActivityItem[];
 }
@@ -60,7 +83,6 @@ const STATUS_BADGE_COLOR: Record<string, BadgeColor> = {
   in_progress: "yellow",
   completed: "green",
   cancelled: "red",
-  pending: "gray",
 };
 
 const ACTIVITY_ICONS: Record<string, typeof DollarSign> = {
@@ -84,7 +106,7 @@ function formatRelativeTime(dateStr: string): string {
   return formatDate(dateStr);
 }
 
-// ---- Skeleton components ----
+// ---- Skeletons ----
 
 function StatsCardSkeleton() {
   return (
@@ -99,57 +121,39 @@ function StatsCardSkeleton() {
   );
 }
 
-function JobRowSkeleton() {
+function CardSkeleton() {
   return (
-    <div className="flex items-center justify-between py-3 animate-pulse">
-      <div className="space-y-2">
-        <div className="h-4 w-40 rounded bg-gray-200" />
-        <div className="h-3 w-28 rounded bg-gray-200" />
-      </div>
-      <div className="h-5 w-16 rounded-full bg-gray-200" />
+    <div className="animate-pulse space-y-3 py-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="flex items-center justify-between py-2">
+          <div className="space-y-1.5">
+            <div className="h-4 w-40 rounded bg-gray-200" />
+            <div className="h-3 w-28 rounded bg-gray-200" />
+          </div>
+          <div className="h-5 w-16 rounded-full bg-gray-200" />
+        </div>
+      ))}
     </div>
   );
 }
 
-function ActivityRowSkeleton() {
-  return (
-    <div className="flex items-start gap-3 py-3 animate-pulse">
-      <div className="h-8 w-8 rounded-full bg-gray-200 shrink-0" />
-      <div className="flex-1 space-y-2">
-        <div className="h-4 w-full rounded bg-gray-200" />
-        <div className="h-3 w-16 rounded bg-gray-200" />
-      </div>
-    </div>
-  );
-}
+// ---- Revenue Chart ----
 
-// ---- Revenue chart (simple bar chart) ----
-
-const SAMPLE_REVENUE = [
-  { label: "Mon", value: 3200 },
-  { label: "Tue", value: 4100 },
-  { label: "Wed", value: 2800 },
-  { label: "Thu", value: 5300 },
-  { label: "Fri", value: 4700 },
-  { label: "Sat", value: 2100 },
-  { label: "Sun", value: 1400 },
-];
-
-function RevenueChart() {
-  const max = Math.max(...SAMPLE_REVENUE.map((d) => d.value));
+function RevenueChart({ data }: { data: RevenueDay[] }) {
+  const max = Math.max(...data.map((d) => d.value), 1);
 
   return (
     <div className="flex items-end gap-3 h-48 pt-4">
-      {SAMPLE_REVENUE.map((day) => {
+      {data.map((day) => {
         const pct = (day.value / max) * 100;
         return (
-          <div key={day.label} className="flex-1 flex flex-col items-center gap-2">
+          <div key={day.date} className="flex-1 flex flex-col items-center gap-2">
             <span className="text-xs font-medium text-gray-500">
-              {formatCurrency(day.value)}
+              {day.value > 0 ? formatCurrency(day.value) : "$0"}
             </span>
             <div
               className="w-full rounded-t-md bg-blue-500 transition-all duration-500 min-h-[4px]"
-              style={{ height: `${pct}%` }}
+              style={{ height: `${Math.max(pct, 2)}%` }}
             />
             <span className="text-xs text-gray-500">{day.label}</span>
           </div>
@@ -159,56 +163,74 @@ function RevenueChart() {
   );
 }
 
-function RevenueChartSkeleton() {
+// ---- Conversion Ring ----
+
+function ConversionRing({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
+  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+  const circumference = 2 * Math.PI * 36;
+  const strokeDashoffset = circumference - (pct / 100) * circumference;
+
   return (
-    <div className="flex items-end gap-3 h-48 pt-4 animate-pulse">
-      {Array.from({ length: 7 }).map((_, i) => (
-        <div key={i} className="flex-1 flex flex-col items-center gap-2">
-          <div className="h-3 w-10 rounded bg-gray-200" />
-          <div
-            className="w-full rounded-t-md bg-gray-200"
-            style={{ height: `${30 + Math.random() * 60}%` }}
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative h-20 w-20">
+        <svg className="h-20 w-20 -rotate-90" viewBox="0 0 80 80">
+          <circle cx="40" cy="40" r="36" fill="none" stroke="#e5e7eb" strokeWidth="6" />
+          <circle
+            cx="40" cy="40" r="36" fill="none" stroke={color} strokeWidth="6"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            className="transition-all duration-700"
           />
-          <div className="h-3 w-6 rounded bg-gray-200" />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-lg font-bold text-gray-900">{pct}%</span>
         </div>
-      ))}
+      </div>
+      <div className="text-center">
+        <p className="text-xs font-medium text-gray-500">{label}</p>
+        <p className="text-xs text-gray-400">{value} / {total}</p>
+      </div>
     </div>
   );
 }
 
-// ---- Main page component ----
+// ---- Main Page ----
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchDashboard() {
-      try {
-        const res = await fetch("/api/dashboard");
-        if (!res.ok) throw new Error("Failed to fetch dashboard data");
-        const json: DashboardData = await res.json();
-        setData(json);
-      } catch (err) {
-        console.error("Dashboard fetch error:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchDashboard();
+    fetch("/api/dashboard")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch");
+        return res.json();
+      })
+      .then((json) => setData(json))
+      .catch((err) => console.error("Dashboard fetch error:", err))
+      .finally(() => setLoading(false));
   }, []);
 
   return (
     <div className="space-y-8">
-      {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Welcome back! Here&#39;s an overview of your business.
-        </p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Welcome back! Here&apos;s an overview of your business.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link href="/jobs/new" className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+            <PlusCircle className="h-4 w-4" />
+            New Job
+          </Link>
+        </div>
       </div>
 
-      {/* Stats row */}
+      {/* Stats Row */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {loading || !data ? (
           <>
@@ -221,80 +243,133 @@ export default function DashboardPage() {
           <>
             <StatsCard
               icon={DollarSign}
-              label="Total Revenue"
+              label="Revenue (30d)"
               value={formatCurrency(data.stats.totalRevenue)}
               change={data.stats.revenueChange}
-              changeLabel="vs last 30 days"
+              changeLabel="vs prev 30 days"
             />
             <StatsCard
               icon={Briefcase}
               label="Active Jobs"
               value={data.stats.activeJobs}
               change={data.stats.activeJobsChange}
-              changeLabel="vs last 30 days"
+              changeLabel="vs prev 30 days"
             />
             <StatsCard
               icon={Users}
               label="New Clients"
               value={data.stats.newClients}
               change={data.stats.newClientsChange}
-              changeLabel="vs last 30 days"
+              changeLabel="vs prev 30 days"
             />
             <StatsCard
               icon={FileText}
               label="Pending Invoices"
               value={data.stats.pendingInvoices}
               change={data.stats.pendingInvoicesChange}
-              changeLabel="vs last 30 days"
+              changeLabel="vs prev 30 days"
             />
           </>
         )}
       </div>
 
-      {/* Upcoming jobs + Recent activity */}
+      {/* Middle row: Revenue Chart + Conversion Metrics */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Revenue chart - spans 2 cols */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-gray-400" />
+              Revenue This Week
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading || !data ? (
+              <div className="h-48 animate-pulse rounded bg-gray-100" />
+            ) : (
+              <RevenueChart data={data.revenueChart} />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Conversion metrics */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="h-5 w-5 text-gray-400" />
+              Conversion Rates
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading || !data ? (
+              <div className="h-48 animate-pulse rounded bg-gray-100" />
+            ) : (
+              <div className="flex items-center justify-around py-4">
+                <ConversionRing
+                  label="Jobs Completed"
+                  value={data.conversions.completedJobs}
+                  total={data.conversions.totalJobs}
+                  color="#22c55e"
+                />
+                <ConversionRing
+                  label="Estimates Won"
+                  value={data.conversions.acceptedEstimates}
+                  total={data.conversions.totalEstimates}
+                  color="#3b82f6"
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Bottom row: Upcoming Jobs + Recent Activity */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Upcoming Jobs */}
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5 text-gray-400" />
               Upcoming Jobs
             </CardTitle>
+            <Link href="/jobs" className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+              View all
+            </Link>
           </CardHeader>
           <CardContent className="divide-y divide-gray-100">
             {loading || !data ? (
-              Array.from({ length: 5 }).map((_, i) => <JobRowSkeleton key={i} />)
+              <CardSkeleton />
             ) : data.upcomingJobs.length === 0 ? (
-              <p className="py-8 text-center text-sm text-gray-400">
-                No upcoming jobs scheduled.
-              </p>
+              <div className="py-8 text-center">
+                <Briefcase className="mx-auto h-8 w-8 text-gray-300" />
+                <p className="mt-2 text-sm text-gray-400">No upcoming jobs scheduled.</p>
+                <Link href="/jobs/new" className="mt-3 inline-block text-sm text-blue-600 hover:text-blue-700">
+                  Schedule a job
+                </Link>
+              </div>
             ) : (
               data.upcomingJobs.map((job) => (
-                <div
+                <Link
                   key={job.id}
-                  className="flex items-center justify-between py-3 first:pt-0 last:pb-0"
+                  href={`/jobs/${job.id}`}
+                  className="flex items-center justify-between py-3 first:pt-0 last:pb-0 hover:bg-gray-50 -mx-6 px-6 transition-colors"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {job.title}
-                    </p>
+                    <p className="text-sm font-medium text-gray-900 truncate">{job.title}</p>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {formatDate(job.scheduledDate)} &middot; {job.clientName}
-                      {job.serviceName && (
-                        <span className="text-gray-400">
-                          {" "}
-                          &middot; {job.serviceName}
-                        </span>
+                      {formatDate(job.scheduledDate)}
+                      {job.scheduledTime && ` at ${job.scheduledTime}`}
+                      {" \u00b7 "}
+                      {job.clientName}
+                      {job.assignedTo && (
+                        <span className="text-gray-400"> &middot; {job.assignedTo}</span>
                       )}
                     </p>
                   </div>
-                  <Badge
-                    color={STATUS_BADGE_COLOR[job.status] ?? "gray"}
-                    dot
-                  >
+                  <Badge color={STATUS_BADGE_COLOR[job.status] ?? "gray"} dot>
                     {job.status.replace(/_/g, " ")}
                   </Badge>
-                </div>
+                </Link>
               ))
             )}
           </CardContent>
@@ -310,13 +385,13 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="divide-y divide-gray-100">
             {loading || !data ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <ActivityRowSkeleton key={i} />
-              ))
+              <CardSkeleton />
             ) : data.recentActivity.length === 0 ? (
-              <p className="py-8 text-center text-sm text-gray-400">
-                No recent activity.
-              </p>
+              <div className="py-8 text-center">
+                <Clock className="mx-auto h-8 w-8 text-gray-300" />
+                <p className="mt-2 text-sm text-gray-400">No recent activity yet.</p>
+                <p className="text-xs text-gray-400 mt-1">Activity will appear as you use the app.</p>
+              </div>
             ) : (
               data.recentActivity.map((item) => {
                 const ActivityIcon = ACTIVITY_ICONS[item.type] ?? Clock;
@@ -341,16 +416,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Revenue chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Revenue This Week</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? <RevenueChartSkeleton /> : <RevenueChart />}
-        </CardContent>
-      </Card>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -21,177 +21,78 @@ import {
   Mail,
   Phone,
   FileImage,
+  RefreshCw,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-type CampaignType = "sms" | "email" | "voicemail" | "postcard";
-type CampaignStatus = "draft" | "scheduled" | "sending" | "sent";
+type CampaignType = "sms_blast" | "email_blast" | "voicemail_blast" | "postcard_blast";
 
-interface Campaign {
+interface ApiCampaign {
   id: string;
   name: string;
-  type: CampaignType;
-  status: CampaignStatus;
-  recipients: number;
-  sent: number;
-  scheduledDate: string;
+  type: string;
+  status: string;
+  content: string | null;
+  subject: string | null;
+  recipientCount: number;
+  sentCount: number;
+  scheduledAt: string | null;
+  createdAt: string;
 }
-
-// ---------------------------------------------------------------------------
-// Mock Data
-// ---------------------------------------------------------------------------
-const MOCK_CAMPAIGNS: Campaign[] = [
-  {
-    id: "c1",
-    name: "Spring HVAC Tune-Up Special",
-    type: "sms",
-    status: "sent",
-    recipients: 1_450,
-    sent: 1_423,
-    scheduledDate: "2026-03-28T10:00:00",
-  },
-  {
-    id: "c2",
-    name: "April Newsletter - New Services",
-    type: "email",
-    status: "scheduled",
-    recipients: 3_200,
-    sent: 0,
-    scheduledDate: "2026-04-05T09:00:00",
-  },
-  {
-    id: "c3",
-    name: "Referral Program Announcement",
-    type: "voicemail",
-    status: "sending",
-    recipients: 800,
-    sent: 412,
-    scheduledDate: "2026-04-01T14:00:00",
-  },
-  {
-    id: "c4",
-    name: "Thank You Postcard - Q1 Clients",
-    type: "postcard",
-    status: "draft",
-    recipients: 650,
-    sent: 0,
-    scheduledDate: "2026-04-10T08:00:00",
-  },
-  {
-    id: "c5",
-    name: "Emergency Plumbing Reminder",
-    type: "sms",
-    status: "sent",
-    recipients: 2_100,
-    sent: 2_087,
-    scheduledDate: "2026-03-22T11:30:00",
-  },
-  {
-    id: "c6",
-    name: "Winter Prep - Insulation Offer",
-    type: "email",
-    status: "sent",
-    recipients: 4_500,
-    sent: 4_321,
-    scheduledDate: "2026-02-15T08:00:00",
-  },
-  {
-    id: "c7",
-    name: "Holiday Greetings 2025",
-    type: "postcard",
-    status: "sent",
-    recipients: 1_800,
-    sent: 1_800,
-    scheduledDate: "2025-12-18T09:00:00",
-  },
-  {
-    id: "c8",
-    name: "Appointment Follow-Up Voicemail",
-    type: "voicemail",
-    status: "scheduled",
-    recipients: 350,
-    sent: 0,
-    scheduledDate: "2026-04-07T13:00:00",
-  },
-  {
-    id: "c9",
-    name: "Flash Sale - 20% Off Drain Cleaning",
-    type: "sms",
-    status: "draft",
-    recipients: 0,
-    sent: 0,
-    scheduledDate: "2026-04-12T10:00:00",
-  },
-  {
-    id: "c10",
-    name: "New Employee Introduction",
-    type: "email",
-    status: "draft",
-    recipients: 0,
-    sent: 0,
-    scheduledDate: "2026-04-15T08:00:00",
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 const TABS: { value: CampaignType | "all"; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "sms", label: "SMS Blast" },
-  { value: "email", label: "Email Blast" },
-  { value: "voicemail", label: "Voicemail Blast" },
-  { value: "postcard", label: "Postcard Blast" },
+  { value: "sms_blast", label: "SMS Blast" },
+  { value: "email_blast", label: "Email Blast" },
+  { value: "voicemail_blast", label: "Voicemail Blast" },
+  { value: "postcard_blast", label: "Postcard Blast" },
 ];
 
 const CAMPAIGN_TYPE_OPTIONS = [
-  { value: "sms", label: "SMS Blast" },
-  { value: "email", label: "Email Blast" },
-  { value: "voicemail", label: "Voicemail Blast" },
-  { value: "postcard", label: "Postcard Blast" },
+  { value: "sms_blast", label: "SMS Blast" },
+  { value: "email_blast", label: "Email Blast" },
+  { value: "voicemail_blast", label: "Voicemail Blast" },
+  { value: "postcard_blast", label: "Postcard Blast" },
 ];
 
-function statusBadgeColor(status: CampaignStatus): BadgeColor {
+function statusBadgeColor(status: string): BadgeColor {
   switch (status) {
-    case "draft":
-      return "gray";
-    case "scheduled":
-      return "blue";
-    case "sending":
-      return "yellow";
-    case "sent":
-      return "green";
-    default:
-      return "gray";
+    case "draft": return "gray";
+    case "scheduled": return "blue";
+    case "sending": return "yellow";
+    case "sent": return "green";
+    default: return "gray";
   }
 }
 
-function campaignTypeLabel(type: CampaignType): string {
+function campaignTypeLabel(type: string): string {
   switch (type) {
-    case "sms":
-      return "SMS Blast";
-    case "email":
-      return "Email Blast";
-    case "voicemail":
-      return "Voicemail Blast";
-    case "postcard":
-      return "Postcard Blast";
+    case "sms_blast": return "SMS Blast";
+    case "email_blast": return "Email Blast";
+    case "voicemail_blast": return "Voicemail Blast";
+    case "postcard_blast": return "Postcard Blast";
+    default: return type;
   }
 }
 
-function TypeIcon({ type }: { type: CampaignType }) {
+function TypeIcon({ type }: { type: string }) {
   switch (type) {
-    case "sms":
+    case "sms_blast":
       return <MessageSquare className="h-4 w-4 text-green-600" />;
-    case "email":
+    case "email_blast":
       return <Mail className="h-4 w-4 text-blue-600" />;
-    case "voicemail":
+    case "voicemail_blast":
       return <Phone className="h-4 w-4 text-orange-600" />;
-    case "postcard":
+    case "postcard_blast":
       return <FileImage className="h-4 w-4 text-purple-600" />;
+    default:
+      return <MessageSquare className="h-4 w-4 text-gray-400" />;
   }
 }
 
@@ -199,45 +100,70 @@ function TypeIcon({ type }: { type: CampaignType }) {
 // Page
 // ---------------------------------------------------------------------------
 export default function CampaignsPage() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>(MOCK_CAMPAIGNS);
+  const [campaigns, setCampaigns] = useState<ApiCampaign[]>([]);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<CampaignType | "all">("all");
   const [showModal, setShowModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // New campaign form state
   const [newName, setNewName] = useState("");
-  const [newType, setNewType] = useState<CampaignType>("sms");
+  const [newType, setNewType] = useState<CampaignType>("sms_blast");
   const [newContent, setNewContent] = useState("");
   const [newRecipients, setNewRecipients] = useState("");
 
-  const filtered =
-    activeTab === "all"
-      ? campaigns
-      : campaigns.filter((c) => c.type === activeTab);
+  const fetchCampaigns = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (activeTab !== "all") params.set("type", activeTab);
+      const res = await fetch(`/api/marketing/campaigns?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setCampaigns(data.campaigns ?? []);
+      }
+    } catch (err) {
+      console.error("Error fetching campaigns:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTab]);
 
-  function handleCreate() {
+  useEffect(() => {
+    fetchCampaigns();
+  }, [fetchCampaigns]);
+
+  async function handleCreate() {
     if (!newName.trim()) return;
-
-    const campaign: Campaign = {
-      id: `c${Date.now()}`,
-      name: newName.trim(),
-      type: newType,
-      status: "draft",
-      recipients: parseInt(newRecipients, 10) || 0,
-      sent: 0,
-      scheduledDate: new Date().toISOString(),
-    };
-
-    setCampaigns((prev) => [campaign, ...prev]);
-    setNewName("");
-    setNewType("sms");
-    setNewContent("");
-    setNewRecipients("");
-    setShowModal(false);
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/marketing/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newName.trim(),
+          type: newType,
+          content: newContent.trim() || undefined,
+          recipientCount: parseInt(newRecipients, 10) || 0,
+        }),
+      });
+      if (res.ok) {
+        setNewName("");
+        setNewType("sms_blast");
+        setNewContent("");
+        setNewRecipients("");
+        setShowModal(false);
+        fetchCampaigns();
+      }
+    } catch (err) {
+      console.error("Error creating campaign:", err);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Campaigns</h1>
         <Button onClick={() => setShowModal(true)}>
@@ -263,55 +189,53 @@ export default function CampaignsPage() {
         ))}
       </div>
 
-      {/* Table */}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Recipients</TableHead>
-            <TableHead className="text-right">Sent</TableHead>
-            <TableHead>Scheduled Date</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filtered.length === 0 ? (
+      {loading ? (
+        <div className="flex items-center justify-center py-16">
+          <RefreshCw className="h-8 w-8 animate-spin text-gray-400" />
+        </div>
+      ) : (
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell colSpan={6} className="py-12 text-center text-gray-500">
-                No campaigns found for this filter.
-              </TableCell>
+              <TableHead>Name</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Recipients</TableHead>
+              <TableHead className="text-right">Sent</TableHead>
+              <TableHead>Scheduled Date</TableHead>
             </TableRow>
-          ) : (
-            filtered.map((campaign) => (
-              <TableRow key={campaign.id}>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <TypeIcon type={campaign.type} />
-                    <span className="font-medium text-gray-900">
-                      {campaign.name}
-                    </span>
-                  </div>
+          </TableHeader>
+          <TableBody>
+            {campaigns.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="py-12 text-center text-gray-500">
+                  No campaigns found for this filter.
                 </TableCell>
-                <TableCell>{campaignTypeLabel(campaign.type)}</TableCell>
-                <TableCell>
-                  <Badge color={statusBadgeColor(campaign.status)} dot>
-                    {campaign.status.charAt(0).toUpperCase() +
-                      campaign.status.slice(1)}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  {campaign.recipients.toLocaleString()}
-                </TableCell>
-                <TableCell className="text-right">
-                  {campaign.sent.toLocaleString()}
-                </TableCell>
-                <TableCell>{formatDate(campaign.scheduledDate)}</TableCell>
               </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
+            ) : (
+              campaigns.map((campaign) => (
+                <TableRow key={campaign.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <TypeIcon type={campaign.type} />
+                      <span className="font-medium text-gray-900">{campaign.name}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>{campaignTypeLabel(campaign.type)}</TableCell>
+                  <TableCell>
+                    <Badge color={statusBadgeColor(campaign.status)} dot>
+                      {campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">{campaign.recipientCount.toLocaleString()}</TableCell>
+                  <TableCell className="text-right">{campaign.sentCount.toLocaleString()}</TableCell>
+                  <TableCell>{campaign.scheduledAt ? formatDate(campaign.scheduledAt) : "—"}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      )}
 
       {/* New Campaign Modal */}
       <Modal
@@ -328,45 +252,32 @@ export default function CampaignsPage() {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
           />
-
           <Select
             label="Campaign Type"
             value={newType}
             onChange={(e) => setNewType(e.target.value as CampaignType)}
             options={CAMPAIGN_TYPE_OPTIONS}
           />
-
           <Textarea
             label="Content"
-            placeholder={
-              newType === "sms"
-                ? "Type your SMS message (160 chars recommended)..."
-                : newType === "email"
-                  ? "Write your email body content..."
-                  : newType === "voicemail"
-                    ? "Write your voicemail script..."
-                    : "Describe your postcard message..."
-            }
+            placeholder="Write your campaign message..."
             value={newContent}
             onChange={(e) => setNewContent(e.target.value)}
             rows={4}
           />
-
           <Input
             label="Number of Recipients"
             type="number"
             placeholder="e.g., 500"
             value={newRecipients}
             onChange={(e) => setNewRecipients(e.target.value)}
-            hint="How many customers will receive this campaign"
           />
-
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="outline" onClick={() => setShowModal(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={!newName.trim()}>
-              Create Campaign
+            <Button onClick={handleCreate} disabled={!newName.trim() || submitting}>
+              {submitting ? "Creating..." : "Create Campaign"}
             </Button>
           </div>
         </div>
