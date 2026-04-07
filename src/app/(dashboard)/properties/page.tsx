@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -107,95 +107,120 @@ function countdownLabel(dateStr: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Mock Data
+// API Response Types
 // ---------------------------------------------------------------------------
-const MOCK_PROPERTIES: Property[] = [
-  {
-    id: "prop-1",
-    name: "Oceanview Beach House",
-    address: "742 Shoreline Dr",
-    city: "Santa Monica",
-    state: "CA",
-    platform: "airbnb",
-    bedrooms: 3,
-    bathrooms: 2,
-    lastCleaned: "2026-03-30",
-    nextTurnover: "2026-04-03",
-    syncStatus: "active",
-  },
-  {
-    id: "prop-2",
-    name: "Downtown Loft Suite",
-    address: "100 Main St, Unit 4B",
-    city: "Austin",
-    state: "TX",
-    platform: "vrbo",
-    bedrooms: 1,
-    bathrooms: 1,
-    lastCleaned: "2026-03-28",
-    nextTurnover: "2026-04-02",
-    syncStatus: "active",
-  },
-  {
-    id: "prop-3",
-    name: "Mountain Retreat Cabin",
-    address: "88 Pine Ridge Rd",
-    city: "Gatlinburg",
-    state: "TN",
-    platform: "booking",
-    bedrooms: 4,
-    bathrooms: 3,
-    lastCleaned: "2026-03-25",
-    nextTurnover: "2026-04-05",
-    syncStatus: "error",
-  },
-  {
-    id: "prop-4",
-    name: "Palm Villa Resort",
-    address: "2210 Sunset Blvd",
-    city: "Scottsdale",
-    state: "AZ",
-    platform: "airbnb",
-    bedrooms: 5,
-    bathrooms: 4,
-    lastCleaned: "2026-04-01",
-    nextTurnover: "2026-04-07",
-    syncStatus: "active",
-  },
-  {
-    id: "prop-5",
-    name: "Harbor View Apartment",
-    address: "55 Wharf St, Apt 12",
-    city: "Portland",
-    state: "ME",
-    platform: "direct",
-    bedrooms: 2,
-    bathrooms: 1,
-    lastCleaned: null,
-    nextTurnover: null,
-    syncStatus: "paused",
-  },
-  {
-    id: "prop-6",
-    name: "Lakeside Bungalow",
-    address: "301 Lake Shore Ln",
-    city: "Lake Tahoe",
-    state: "CA",
-    platform: "vrbo",
-    bedrooms: 3,
-    bathrooms: 2,
-    lastCleaned: "2026-03-29",
-    nextTurnover: "2026-04-04",
-    syncStatus: "active",
-  },
-];
+interface ApiProperty {
+  id: string;
+  name: string;
+  address: string;
+  city: string | null;
+  state: string | null;
+  propertyType: string | null;
+  bedrooms: number;
+  bathrooms: number;
+  isActive: boolean;
+  icalFeeds?: { id: string; platform: string; feedUrl: string }[];
+  turnovers?: {
+    id: string;
+    scheduledDate: string;
+    completedAt: string | null;
+    status: string;
+  }[];
+  [key: string]: unknown;
+}
+
+const VALID_PLATFORMS: Platform[] = ["airbnb", "vrbo", "booking", "direct"];
+
+function toPlatform(raw: string | null | undefined): Platform {
+  if (raw && VALID_PLATFORMS.includes(raw as Platform)) return raw as Platform;
+  return "direct";
+}
+
+function mapApiProperty(api: ApiProperty): Property {
+  // Determine sync status from icalFeeds and isActive
+  let syncStatus: SyncStatus = "paused";
+  if (api.isActive) {
+    syncStatus = api.icalFeeds && api.icalFeeds.length > 0 ? "active" : "active";
+  }
+
+  // Derive turnover-related display data
+  const now = new Date();
+  const sortedTurnovers = (api.turnovers ?? [])
+    .filter((t) => t.status !== "cancelled")
+    .sort(
+      (a, b) =>
+        new Date(a.scheduledDate).getTime() -
+        new Date(b.scheduledDate).getTime()
+    );
+
+  const lastCompleted = [...sortedTurnovers]
+    .filter((t) => t.completedAt)
+    .sort(
+      (a, b) =>
+        new Date(b.completedAt!).getTime() -
+        new Date(a.completedAt!).getTime()
+    )[0];
+
+  const nextUpcoming = sortedTurnovers.find(
+    (t) => new Date(t.scheduledDate) >= now && !t.completedAt
+  );
+
+  return {
+    id: api.id,
+    name: api.name,
+    address: api.address,
+    city: api.city ?? "",
+    state: api.state ?? "",
+    platform: toPlatform(api.propertyType),
+    bedrooms: api.bedrooms,
+    bathrooms: api.bathrooms,
+    lastCleaned: lastCompleted?.completedAt ?? null,
+    nextTurnover: nextUpcoming?.scheduledDate ?? null,
+    syncStatus,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 export default function PropertiesPage() {
   const [activeTab, setActiveTab] = useState("all");
-  const properties = MOCK_PROPERTIES;
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchProperties() {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch("/api/properties?limit=100");
+        if (!res.ok) {
+          throw new Error("Failed to fetch properties");
+        }
+        const data = await res.json();
+        if (!cancelled) {
+          const mapped = (data.properties ?? []).map(mapApiProperty);
+          setProperties(mapped);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "An error occurred");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchProperties();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered =
     activeTab === "all"
@@ -208,7 +233,35 @@ export default function PropertiesPage() {
   const upcomingTurnovers = properties.filter(
     (p) => p.nextTurnover && daysUntil(p.nextTurnover) >= 0 && daysUntil(p.nextTurnover) <= 7
   ).length;
-  const completedThisMonth = 12; // mock stat
+  const completedThisMonth = properties.filter(
+    (p) => p.lastCleaned && new Date(p.lastCleaned).getMonth() === new Date().getMonth() && new Date(p.lastCleaned).getFullYear() === new Date().getFullYear()
+  ).length;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
+        <span className="ml-2 text-gray-500">Loading properties...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <AlertCircle className="h-8 w-8 text-red-400" />
+        <p className="mt-2 text-sm text-red-600">{error}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          onClick={() => window.location.reload()}
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -226,7 +226,7 @@ export default function DispatchPage() {
         const res = await fetch("/api/team?limit=100");
         if (res.ok) {
           const data = await res.json();
-          setEmployees(data.users ?? data.employees ?? data ?? []);
+          setEmployees(data.team ?? data.users ?? data.employees ?? data ?? []);
         }
       } catch {
         // silently fail

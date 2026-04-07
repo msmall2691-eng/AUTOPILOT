@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -17,6 +17,10 @@ import {
   Calendar,
   DollarSign,
   BookOpen,
+  Loader2,
+  X,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -63,14 +67,47 @@ const PAYMENT_TERMS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Mock data
+// Feedback toast type & component
+// ---------------------------------------------------------------------------
+
+type ToastMessage = {
+  type: "success" | "error";
+  text: string;
+} | null;
+
+function Toast({ message, onDismiss }: { message: ToastMessage; onDismiss: () => void }) {
+  if (!message) return null;
+  return (
+    <div
+      className={cn(
+        "fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-lg px-4 py-3 shadow-lg text-sm font-medium transition-all",
+        message.type === "success"
+          ? "bg-green-50 text-green-800 border border-green-200"
+          : "bg-red-50 text-red-800 border border-red-200"
+      )}
+    >
+      {message.type === "success" ? (
+        <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+      ) : (
+        <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
+      )}
+      {message.text}
+      <button onClick={onDismiss} className="ml-2 shrink-0">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Default / fallback data
 // ---------------------------------------------------------------------------
 
 const INITIAL_COMPANY = {
-  name: "Autopilot Services LLC",
-  email: "hello@autopilotservices.com",
-  phone: "5551234567",
-  address: "742 Evergreen Terrace, Springfield, IL 62704",
+  name: "",
+  email: "",
+  phone: "",
+  address: "",
   industry: "hvac",
   timezone: "America/Chicago",
   brandColor: "#2563EB",
@@ -180,9 +217,13 @@ function Toggle({
 function CompanyTab({
   company,
   setCompany,
+  onSave,
+  saving,
 }: {
   company: typeof INITIAL_COMPANY;
   setCompany: React.Dispatch<React.SetStateAction<typeof INITIAL_COMPANY>>;
+  onSave: () => void;
+  saving: boolean;
 }) {
   const update = (field: keyof typeof INITIAL_COMPANY, value: string) =>
     setCompany((prev) => ({ ...prev, [field]: value }));
@@ -311,9 +352,13 @@ function CompanyTab({
       </Card>
 
       <div className="flex justify-end">
-        <Button onClick={() => alert("Settings saved!")}>
-          <Check className="mr-2 h-4 w-4" />
-          Save Changes
+        <Button onClick={onSave} disabled={saving}>
+          {saving ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Check className="mr-2 h-4 w-4" />
+          )}
+          {saving ? "Saving…" : "Save Changes"}
         </Button>
       </div>
     </div>
@@ -323,11 +368,15 @@ function CompanyTab({
 function NotificationsTab({
   notifications,
   setNotifications,
+  onSave,
+  saving,
 }: {
   notifications: typeof INITIAL_NOTIFICATIONS;
   setNotifications: React.Dispatch<
     React.SetStateAction<typeof INITIAL_NOTIFICATIONS>
   >;
+  onSave: () => void;
+  saving: boolean;
 }) {
   const toggle = (field: keyof typeof INITIAL_NOTIFICATIONS) =>
     setNotifications((prev) => ({
@@ -461,9 +510,13 @@ function NotificationsTab({
       </Card>
 
       <div className="flex justify-end">
-        <Button onClick={() => alert("Notification preferences saved!")}>
-          <Check className="mr-2 h-4 w-4" />
-          Save Preferences
+        <Button onClick={onSave} disabled={saving}>
+          {saving ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Check className="mr-2 h-4 w-4" />
+          )}
+          {saving ? "Saving…" : "Save Preferences"}
         </Button>
       </div>
     </div>
@@ -689,9 +742,155 @@ export default function SettingsPage() {
   const [company, setCompany] = useState(INITIAL_COMPANY);
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
   const [integrations, setIntegrations] = useState(INITIAL_INTEGRATIONS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<ToastMessage>(null);
+
+  const showToast = useCallback((type: "success" | "error", text: string) => {
+    setToast({ type, text });
+    setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  // Fetch settings on mount
+  useEffect(() => {
+    async function fetchSettings() {
+      try {
+        const res = await fetch("/api/settings");
+        if (!res.ok) throw new Error("Failed to load settings");
+        const data = await res.json();
+
+        if (data.company) {
+          setCompany({
+            name: data.company.name ?? "",
+            email: data.company.email ?? "",
+            phone: data.company.phone ?? "",
+            address: data.company.address ?? "",
+            industry: data.company.industry ?? "hvac",
+            timezone: data.company.timezone ?? "America/Chicago",
+            brandColor: data.settings?.brandColor ?? "#2563EB",
+            taxRate: String(data.settings?.taxRate ?? 0),
+            invoicePrefix: data.settings?.invoicePrefix ?? "INV",
+            estimatePrefix: data.settings?.estimatePrefix ?? "EST",
+            paymentTerms: (() => {
+              const terms = data.settings?.defaultPaymentTerms;
+              if (typeof terms === "string") return terms;
+              if (terms === 0) return "due_on_receipt";
+              if (typeof terms === "number") return `net_${terms}`;
+              return "net_30";
+            })(),
+          });
+        }
+
+        if (data.settings) {
+          const s = data.settings;
+          // notificationEmail and notificationSms are booleans in the DB
+          const emailEnabled = s.notificationEmail !== false;
+          const smsEnabled = s.notificationSms !== false;
+          setNotifications({
+            emailNewJob: emailEnabled,
+            emailJobComplete: emailEnabled,
+            emailInvoicePaid: emailEnabled,
+            emailWeeklySummary: emailEnabled,
+            smsNewJob: smsEnabled,
+            smsJobReminder: smsEnabled,
+            smsClientMessage: smsEnabled,
+            jobReminders: s.sendJobReminders ?? true,
+            jobReminderHours: String(s.reminderHoursBefore ?? 24),
+            reviewRequests: s.autoRequestReviews ?? true,
+            reviewRequestDelay: String(s.reviewDelayHours ?? 48),
+          });
+        }
+      } catch {
+        showToast("error", "Failed to load settings. Using defaults.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchSettings();
+  }, [showToast]);
+
+  // Build the API payload from current state
+  const buildPayload = useCallback(() => {
+    return {
+      company: {
+        name: company.name,
+        email: company.email,
+        phone: company.phone,
+        address: company.address,
+        industry: company.industry,
+        timezone: company.timezone,
+      },
+      settings: {
+        brandColor: company.brandColor,
+        taxRate: company.taxRate,
+        invoicePrefix: company.invoicePrefix,
+        estimatePrefix: company.estimatePrefix,
+        defaultPaymentTerms: company.paymentTerms,
+        jobReminders: notifications.jobReminders,
+        jobReminderHours: notifications.jobReminderHours,
+        reviewRequests: notifications.reviewRequests,
+        reviewRequestDelay: notifications.reviewRequestDelay,
+        notificationEmail: {
+          newJob: notifications.emailNewJob,
+          jobComplete: notifications.emailJobComplete,
+          invoicePaid: notifications.emailInvoicePaid,
+          weeklySummary: notifications.emailWeeklySummary,
+        },
+        notificationSms: {
+          newJob: notifications.smsNewJob,
+          jobReminder: notifications.smsJobReminder,
+          clientMessage: notifications.smsClientMessage,
+        },
+      },
+    };
+  }, [company, notifications]);
+
+  const handleSaveCompany = useCallback(async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPayload()),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      showToast("success", "Company settings saved successfully.");
+    } catch {
+      showToast("error", "Failed to save company settings. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }, [buildPayload, showToast]);
+
+  const handleSaveNotifications = useCallback(async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPayload()),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      showToast("success", "Notification preferences saved successfully.");
+    } catch {
+      showToast("error", "Failed to save notification preferences. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }, [buildPayload, showToast]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      <Toast message={toast} onDismiss={() => setToast(null)} />
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
@@ -724,12 +923,14 @@ export default function SettingsPage() {
 
       {/* Tab content */}
       {activeTab === "company" && (
-        <CompanyTab company={company} setCompany={setCompany} />
+        <CompanyTab company={company} setCompany={setCompany} onSave={handleSaveCompany} saving={saving} />
       )}
       {activeTab === "notifications" && (
         <NotificationsTab
           notifications={notifications}
           setNotifications={setNotifications}
+          onSave={handleSaveNotifications}
+          saving={saving}
         />
       )}
       {activeTab === "billing" && <BillingTab />}
